@@ -243,30 +243,35 @@ class CaptionForegroundService : Service() {
                         if (partial.text.isNotBlank()) translateSnapshot(partial)
                     }
             }
+val onSpeechResult = { result: SpeechResult ->
+    val transcript = result.text.trim()
+    Log.d("CaptionService", "onSpeechResult final=${result.isFinal} text='$transcript'")
 
-            val onSpeechResult = { result: SpeechResult ->
-                val transcript = result.text.trim()
-                Log.d("CaptionService", "onSpeechResult final=${result.isFinal} text='$transcript'")
-                val candidateId = lineIdCounter.incrementAndGet()
-                app.container.runtimeStore.update {
-                    it.copy(
-                        originalText = transcript,
-                        // Partials overwrite the open line; finals close it so the next
-                        // utterance starts fresh. Works the same for mic and system audio
-                        // now that both stream.
-                        transcriptLines = recordTranscriptResult(
-                            lines = it.transcriptLines,
-                            originalText = transcript,
-                            isFinal = result.isFinal,
-                            newLineId = candidateId
-                        ),
-                        status = RecognitionStatus.PROCESSING,
-                        lastError = null
-                    )
-                }
-                queueTranslation(transcript, candidateId, result.isFinal)
-            }
+    if (transcript.isNotBlank()) {
+        val candidateId = lineIdCounter.incrementAndGet()
 
+        val updatedRuntime = app.container.runtimeStore.update { runtime ->
+            val updatedLines = recordTranscriptResult(
+                lines = runtime.transcriptLines,
+                originalText = transcript,
+                isFinal = result.isFinal,
+                newLineId = candidateId
+            )
+
+            runtime.copy(
+                originalText = transcript,
+                transcriptLines = updatedLines,
+                status = RecognitionStatus.PROCESSING,
+                lastError = null
+            )
+        }
+
+        val actualLineId = updatedRuntime.transcriptLines.lastOrNull()?.id
+            ?: candidateId
+
+        queueTranslation(transcript, actualLineId, result.isFinal)
+    }
+}
             val mediaProjection = if (currentAudioSource == AudioSource.SYSTEM) {
                 val mpManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 val data = MediaProjectionHolder.data
@@ -426,15 +431,36 @@ class CaptionForegroundService : Service() {
             autoDetect = currentAudioSource == AudioSource.SYSTEM || captionSettings.autoDetectSource
         )
         if (translated.isBlank()) return
-        val translatedWithGlossary = applyGlossary(translated, app.container.glossary.list())
-        app.container.runtimeStore.update {
-            val current = it.transcriptLines.any { line -> line.id == request.lineId }
-            it.copy(
-                translatedText = if (current) translatedWithGlossary else it.translatedText,
-                transcriptLines = updateTranscriptTranslation(it.transcriptLines, request.lineId, translatedWithGlossary),
-                status = if (paused) RecognitionStatus.PAUSED else RecognitionStatus.LISTENING
-            )
+val translatedWithGlossary = applyGlossary(
+    translated,
+    app.container.glossary.list()
+)
+
+app.container.runtimeStore.update {
+    val currentLine = it.transcriptLines.firstOrNull { line ->
+        line.id == request.lineId &&
+            line.originalText == request.text
+    }
+
+    it.copy(
+        translatedText = if (currentLine != null) {
+            translatedWithGlossary
+        } else {
+            it.translatedText
+        },
+        transcriptLines = updateTranscriptTranslation(
+            lines = it.transcriptLines,
+            lineId = request.lineId,
+            translatedText = translatedWithGlossary,
+            expectedOriginalText = request.text
+        ),
+        status = if (paused) {
+            RecognitionStatus.PAUSED
+        } else {
+            RecognitionStatus.LISTENING
         }
+    )
+}
         if (request.saveHistory && captionSettings.saveHistory) {
             app.container.transcriptHistory.add(
                 TranscriptEntry(

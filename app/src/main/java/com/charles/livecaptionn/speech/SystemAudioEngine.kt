@@ -354,7 +354,7 @@ class SystemAudioEngine(
 
     companion object {
         private const val SAMPLE_RATE = 16000
-        private const val REMOTE_CHUNK_SECONDS = 6
+        private const val REMOTE_CHUNK_SECONDS = 3
         private const val LOCAL_CHUNK_SECONDS = 2
         private const val QUEUE_CAPACITY = 2
 

@@ -4,7 +4,6 @@ import com.charles.livecaptionn.speech.RecognitionStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 
 data class CaptionRuntimeLine(
     val id: Long,
@@ -25,9 +24,15 @@ data class CaptionRuntimeState(
 
 class CaptionRuntimeStore {
     private val mutable = MutableStateFlow(CaptionRuntimeState())
+
     val state: StateFlow<CaptionRuntimeState> = mutable.asStateFlow()
 
-    fun update(transform: (CaptionRuntimeState) -> CaptionRuntimeState) {
-        mutable.update(transform)
+    @Synchronized
+    fun update(
+        transform: (CaptionRuntimeState) -> CaptionRuntimeState
+    ): CaptionRuntimeState {
+        val updatedState = transform(mutable.value)
+        mutable.value = updatedState
+        return updatedState
     }
 }

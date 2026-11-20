@@ -31,7 +31,7 @@ class ServiceTransformsTest {
         val result = recordTranscriptResult(lines, "world", isFinal = false, newLineId = 2L)
         assertEquals(1, result.size)
         assertEquals("world", result.first().originalText)
-        assertEquals(2L, result.first().id)
+        assertEquals(1L, result.first().id)
     }
 
     @Test
@@ -114,8 +114,13 @@ class ServiceTransformsTest {
     fun updateTranscriptTranslation_staleIdAfterTextEvolved_isNoOp() {
         val original = listOf(CaptionRuntimeLine(id = 1L, originalText = "hel"))
         val evolved = recordTranscriptResult(original, "hello world", isFinal = false, newLineId = 2L)
-        // Translation for the stale id (1L) arrives after the line evolved to id 2L.
-        val result = updateTranscriptTranslation(evolved, lineId = 1L, translatedText = "stale")
+        // The old text no longer matches the evolved line.
+        val result = updateTranscriptTranslation(
+            evolved,
+            lineId = 1L,
+            translatedText = "stale",
+            expectedOriginalText = "hel"
+        )
         assertEquals(evolved, result)
     }
 
