@@ -391,7 +391,11 @@ val onSpeechResult = { result: SpeechResult ->
         settings: CaptionSettings,
         hasPro: Boolean
     ) = OverlayUiState(
-        originalText = runtime.originalText,
+        // Preserve recognized source-language lines as scrollback.
+        originalText = runtime.transcriptLines
+            .map { it.originalText.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString("\n"),
         translatedText = runtime.translatedText.ifBlank { runtime.originalText },
         transcriptText = overlayTranscriptText(runtime),
         status = runtime.status,

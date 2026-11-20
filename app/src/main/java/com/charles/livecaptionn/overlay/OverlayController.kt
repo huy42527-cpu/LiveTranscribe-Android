@@ -139,7 +139,7 @@ class OverlayController(
             setLineSpacing(dp(2).toFloat(), 1.05f)
             setPadding(0, dp(1), 0, dp(2))
             textSize = 14f
-            maxLines = 3
+            maxLines = 500
             ellipsize = TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -179,6 +179,7 @@ class OverlayController(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
+            addView(origContainer)
             addView(translatedText)
         }
 
@@ -192,7 +193,6 @@ class OverlayController(
         }
 
         container.addView(header)
-        container.addView(origContainer)
         container.addView(body)
 
         frame.addView(container)
