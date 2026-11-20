@@ -171,10 +171,16 @@ class SystemAudioEngine(
 
         statusMutable.value = RecognitionStatus.LISTENING
 
-        // Keep only two waiting chunks to prevent unlimited memory growth.
+        // Keep a short bounded backlog for temporary STT server delays.
         val audioQueue = Channel<AudioChunk>(
             capacity = QUEUE_CAPACITY,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+            onUndeliveredElement = { dropped ->
+                Log.w(
+                    "SystemAudioEngine",
+                    "Audio backlog overflow: discarded ${dropped.pcmData.size} bytes"
+                )
+            }
         )
 
         // Consumer: performs STT independently from audio capture.
@@ -356,7 +362,7 @@ class SystemAudioEngine(
         private const val SAMPLE_RATE = 16000
         private const val REMOTE_CHUNK_SECONDS = 3
         private const val LOCAL_CHUNK_SECONDS = 2
-        private const val QUEUE_CAPACITY = 2
+        private const val QUEUE_CAPACITY = 4
 
         private const val SILENCE_AVERAGE_ABS_THRESHOLD = 120
         private const val SILENT_CHUNKS_BEFORE_HINT = 2
