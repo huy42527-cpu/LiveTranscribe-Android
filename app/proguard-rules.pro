@@ -9,3 +9,7 @@
 }
 # JNA references Java AWT classes that are unavailable on Android.
 -dontwarn java.awt.**
+
+# Vosk uses JNA reflection; preserve constructors and members.
+-keep class org.vosk.** { *; }
+
