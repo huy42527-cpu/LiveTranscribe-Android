@@ -109,6 +109,10 @@ android {
             localProps.getProperty("ads.admob.app.id", "ca-app-pub-3940256099942544~3347511713")
 
         // GitHub repo that the in-app update checker queries for new releases.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+
         buildConfigField("String", "UPDATE_REPO_OWNER", "\"chartmann1590\"")
         buildConfigField("String", "UPDATE_REPO_NAME", "\"LiveTranscribe-Android\"")
 
@@ -160,7 +164,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -1,1 +1,9 @@
-# Intentionally minimal for MVP.
+# Vosk: preserve JNI native method names for JNA Native.register().
+-keep class org.vosk.LibVosk {
+    *;
+}
+
+# JNA: preserve classes and members used through reflection/native registration.
+-keep class com.sun.jna.** {
+    *;
+}
