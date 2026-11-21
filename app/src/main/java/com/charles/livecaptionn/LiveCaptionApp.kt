@@ -27,13 +27,17 @@ class LiveCaptionApp : Application() {
         // off the main-thread startup path.
         container.appScope.launch { UpdateCheckWorker.schedule(this@LiveCaptionApp) }
 
-        FirebaseApp.initializeApp(this)
-        // Don't pollute the Crashlytics dashboard or skew Analytics with developer
-        // builds. Performance Monitoring follows the same toggle.
-        val collectInProd = !BuildConfig.DEBUG
-        Firebase.crashlytics.isCrashlyticsCollectionEnabled = collectInProd
-        Firebase.analytics.setAnalyticsCollectionEnabled(collectInProd)
-        Firebase.performance.isPerformanceCollectionEnabled = collectInProd
+        // Firebase is configured only for the Play Store distribution.
+        // GitHub builds use a CI placeholder API key, so skip Firebase entirely.
+        if (BuildConfig.FLAVOR == "playstore") {
+            FirebaseApp.initializeApp(this)
+            // Don't pollute the Crashlytics dashboard or skew Analytics with developer
+            // builds. Performance Monitoring follows the same toggle.
+            val collectInProd = !BuildConfig.DEBUG
+            Firebase.crashlytics.isCrashlyticsCollectionEnabled = collectInProd
+            Firebase.analytics.setAnalyticsCollectionEnabled(collectInProd)
+            Firebase.performance.isPerformanceCollectionEnabled = collectInProd
+        }
 
         if (!AdUnits.ENABLED) return
 
