@@ -7,3 +7,5 @@
 -keep class com.sun.jna.** {
     *;
 }
+# JNA references Java AWT classes that are unavailable on Android.
+-dontwarn java.awt.**
