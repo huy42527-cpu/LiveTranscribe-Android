@@ -1,6 +1,9 @@
 name: Release APK Build
 
 on:
+  push:
+    branches:
+      - fix/remote-whisper-low-latency
   workflow_dispatch:
 
 permissions:
