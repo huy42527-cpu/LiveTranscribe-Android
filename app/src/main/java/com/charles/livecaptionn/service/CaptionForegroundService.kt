@@ -234,7 +234,6 @@ class CaptionForegroundService : Service() {
             launch(Dispatchers.IO) {
                 Log.i("CaptionService", "Translation collector started")
                 translateRequests
-                    .debounce(TRANSLATE_DEBOUNCE_MS)
                     .collect {
                         Log.d("CaptionService", "Translation collector received signal; pendingFinal=${pendingFinalTranslations.size}")
                         while (true) {
