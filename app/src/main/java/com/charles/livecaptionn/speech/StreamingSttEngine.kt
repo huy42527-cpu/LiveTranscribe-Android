@@ -165,6 +165,7 @@ class StreamingSttEngine(
         var silentChunkStreak = 0
         var lastEmittedPartial = ""
         var sawAnyAudioEver = false
+        var lastDebugLogMs = 0L
 
         while (scope.isActive && running) {
             if (paused) {
@@ -212,6 +213,11 @@ class StreamingSttEngine(
 
             val localSession = session ?: break
             val result = localSession.feed(buffer, read)
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - lastDebugLogMs >= 1000) {
+                Log.d(TAG, "DEBUG read=$read avgAbs=$avgAbs silent=$isSilent accepted=${result.accepted} hasText=${result.text.isNotBlank()}")
+                lastDebugLogMs = nowMs
+            }
 
             if (result.accepted) {
                 // Vosk hit a silence/segment boundary and emitted a finalized chunk.
