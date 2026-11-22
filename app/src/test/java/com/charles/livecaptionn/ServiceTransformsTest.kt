@@ -31,7 +31,7 @@ class ServiceTransformsTest {
         val result = recordTranscriptResult(lines, "world", isFinal = false, newLineId = 2L)
         assertEquals(1, result.size)
         assertEquals("world", result.first().originalText)
-        assertEquals(2L, result.first().id)
+        assertEquals(1L, result.first().id)
     }
 
     @Test
@@ -47,6 +47,27 @@ class ServiceTransformsTest {
         assertEquals(1, result.size)
         assertEquals("hello world", result.first().originalText)
         assertEquals("", result.first().translatedText)
+        assertEquals(1L, result.first().revision)
+    }
+
+    @Test
+    fun recordTranscriptResult_partialTextChanges_incrementsRevisionAndClearsTranslation() {
+        val lines = listOf(
+            CaptionRuntimeLine(
+                id = 1L,
+                originalText = "hello",
+                translatedText = "xin chao",
+                revision = 4L
+            )
+        )
+
+        val result = recordTranscriptResult(
+            lines, "hello world", isFinal = false, newLineId = 2L
+        )
+
+        assertEquals("hello world", result.first().originalText)
+        assertEquals("", result.first().translatedText)
+        assertEquals(5L, result.first().revision)
     }
 
     @Test
@@ -71,6 +92,7 @@ class ServiceTransformsTest {
         assertEquals(1L, result.first().id)
         assertEquals("xin chao", result.first().translatedText)
         assertEquals(true, result.first().isFinal)
+        assertEquals(1L, result.first().revision)
     }
 
     @Test
@@ -111,12 +133,55 @@ class ServiceTransformsTest {
     }
 
     @Test
-    fun updateTranscriptTranslation_staleIdAfterTextEvolved_isNoOp() {
+    fun updateTranscriptTranslation_staleTextAfterPartialEvolved_isNoOp() {
         val original = listOf(CaptionRuntimeLine(id = 1L, originalText = "hel"))
         val evolved = recordTranscriptResult(original, "hello world", isFinal = false, newLineId = 2L)
-        // Translation for the stale id (1L) arrives after the line evolved to id 2L.
-        val result = updateTranscriptTranslation(evolved, lineId = 1L, translatedText = "stale")
+        // The old text no longer matches the evolved line.
+        val result = updateTranscriptTranslation(
+            evolved,
+            lineId = 1L,
+            translatedText = "stale",
+            expectedOriginalText = "hel"
+        )
         assertEquals(evolved, result)
+    }
+
+    @Test
+    fun updateTranscriptTranslation_staleRevisionAfterFinalTransition_isNoOp() {
+        val partial = listOf(
+            CaptionRuntimeLine(id = 1L, originalText = "hello", revision = 0L)
+        )
+        val finalized = recordTranscriptResult(
+            partial, "hello", isFinal = true, newLineId = 2L
+        )
+
+        val result = updateTranscriptTranslation(
+            finalized,
+            lineId = 1L,
+            translatedText = "stale translation",
+            expectedOriginalText = "hello",
+            expectedRevision = 0L
+        )
+
+        assertEquals(finalized, result)
+    }
+
+    @Test
+    fun updateTranscriptTranslation_matchingRevision_acceptsTranslation() {
+        val lines = listOf(
+            CaptionRuntimeLine(id = 1L, originalText = "hello", revision = 3L)
+        )
+
+        val result = updateTranscriptTranslation(
+            lines,
+            lineId = 1L,
+            translatedText = "xin chao",
+            expectedOriginalText = "hello",
+            expectedRevision = 3L
+        )
+
+        assertEquals("xin chao", result.first().translatedText)
+        assertEquals(3L, result.first().revision)
     }
 
     @Test
