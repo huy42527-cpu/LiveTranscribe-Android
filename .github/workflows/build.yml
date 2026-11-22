@@ -37,9 +37,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Validate AdMob secrets
-        # Same-repo PRs get repository secrets, so build them like pushes.
-        if: github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      - name: Check release secrets
+        id: release_config
         env:
           ADS_ENABLED: ${{ secrets.ADS_ENABLED }}
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
@@ -59,26 +58,28 @@ jobs:
           missing=0
           for key in ADS_ENABLED ADMOB_APP_ID ADMOB_APP_OPEN_ID_DEBUG ADMOB_APP_OPEN_ID_RELEASE ADMOB_BANNER_ID_DEBUG ADMOB_BANNER_ID_RELEASE ADMOB_NATIVE_ID_DEBUG ADMOB_NATIVE_ID_RELEASE GOOGLE_SERVICES_JSON_B64 ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_FILE ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
             if [[ -z "${!key}" ]]; then
-              echo "::error::$key is not set in GitHub repository secrets."
+              echo "Missing release configuration: $key"
               missing=1
             fi
           done
-          if [[ "$missing" -ne 0 ]]; then
-            exit 1
+          if [[ "$missing" -eq 0 ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Release configuration is available."
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Release skipped; debug validation will continue."
           fi
 
       - name: Generate app/google-services.json from secret
-        if: github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+        if: steps.release_config.outputs.available == 'true'
         env:
           GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: |
           mkdir -p app
           echo "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > app/google-services.json
 
-      - name: Placeholder google-services.json (PRs without secrets)
-        # Dependabot and fork PRs get no repository secrets; the Google Services
-        # plugin only needs a syntactically valid file to compile and run tests.
-        if: github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]')
+      - name: Generate placeholder google-services.json
+        if: steps.release_config.outputs.available != 'true'
         run: |
           mkdir -p app
           cat > app/google-services.json <<'EOF'
@@ -88,23 +89,27 @@ jobs:
               "project_id": "ci-placeholder",
               "storage_bucket": "ci-placeholder.appspot.com"
             },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
-                  "android_client_info": { "package_name": "com.charles.livecaptionn" }
-                },
-                "oauth_client": [],
-                "api_key": [ { "current_key": "ci-placeholder" } ],
-                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+                "android_client_info": {
+                  "package_name": "com.charles.livecaptionn"
+                }
+              },
+              "oauth_client": [],
+              "api_key": [{"current_key": "ci-placeholder"}],
+              "services": {
+                "appinvite_service": {
+                  "other_platform_oauth_client": []
+                }
               }
-            ],
+            }],
             "configuration_version": "1"
           }
           EOF
 
       - name: Generate signing files from secrets
-        if: github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+        if: steps.release_config.outputs.available == 'true'
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           ANDROID_KEYSTORE_FILE: ${{ secrets.ANDROID_KEYSTORE_FILE }}
@@ -120,9 +125,9 @@ jobs:
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
 
-      - name: Generate CI local.properties (ads enabled)
-        if: github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      - name: Generate CI local.properties
         env:
+          RELEASE_CONFIG_AVAILABLE: ${{ steps.release_config.outputs.available }}
           ADS_ENABLED: ${{ secrets.ADS_ENABLED }}
           ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
           ADMOB_APP_OPEN_ID_DEBUG: ${{ secrets.ADMOB_APP_OPEN_ID_DEBUG }}
@@ -135,10 +140,15 @@ jobs:
           STRIPE_PRICE_AD_FREE: ${{ secrets.STRIPE_PRICE_AD_FREE }}
           STRIPE_PRICE_PRO: ${{ secrets.STRIPE_PRICE_PRO }}
         run: |
+          if [[ "$RELEASE_CONFIG_AVAILABLE" == "true" ]]; then
+            ENABLED="${ADS_ENABLED}"
+          else
+            ENABLED="false"
+          fi
           cat > local.properties <<EOF
           translate.url=http://localhost:3006
           stt.url=http://localhost:9000/asr?output=json
-          ads.enabled=${ADS_ENABLED:-true}
+          ads.enabled=$ENABLED
           ads.admob.app.id=$ADMOB_APP_ID
           ads.admob.app.open.id.debug=$ADMOB_APP_OPEN_ID_DEBUG
           ads.admob.app.open.id.release=$ADMOB_APP_OPEN_ID_RELEASE
@@ -158,12 +168,13 @@ jobs:
         run: ./gradlew assembleDebug
 
       - name: Build release APKs and App Bundles
+        if: github.event_name == 'push' && steps.release_config.outputs.available == 'true'
         run: ./gradlew assembleRelease bundleRelease
 
       # Compute a tag name for release filenames and GitHub release publishing.
       - name: Compute release tag
+        if: github.event_name == 'push' && steps.release_config.outputs.available == 'true'
         id: tag
-        if: github.event_name == 'push'
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
@@ -172,7 +183,7 @@ jobs:
           fi
 
       - name: Prepare release files with live-caption names
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.release_config.outputs.available == 'true'
         run: |
           TAG="${{ steps.tag.outputs.name }}"
           GITHUB_APK="app/build/outputs/apk/github/release/app-github-release.apk"
@@ -198,28 +209,28 @@ jobs:
           path: app/build/outputs/apk/playstore/debug/app-playstore-debug.apk
 
       - name: Upload release APK (GitHub / self-update)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.release_config.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: live-caption-release-apk-github
           path: app/build/outputs/apk/github/release/live-caption-${{ steps.tag.outputs.name }}-github.apk
 
       - name: Upload release AAB (GitHub / self-update)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.release_config.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: live-caption-release-aab-github
           path: app/build/outputs/bundle/githubRelease/live-caption-${{ steps.tag.outputs.name }}-github.aab
 
       - name: Upload release AAB (Play Store)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.release_config.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: live-caption-release-aab-playstore
           path: app/build/outputs/bundle/playstoreRelease/live-caption-${{ steps.tag.outputs.name }}-playstore.aab
 
       - name: Create GitHub Release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.release_config.outputs.available == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
