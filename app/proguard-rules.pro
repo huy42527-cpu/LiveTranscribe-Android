@@ -13,3 +13,7 @@
 # Vosk uses JNA reflection; preserve constructors and members.
 -keep class org.vosk.** { *; }
 
+
+# Moshi Kotlin reflection: preserve Kotlin metadata and translation models.
+-keep class kotlin.Metadata { *; }
+-keep class com.charles.livecaptionn.translation.** { *; }
