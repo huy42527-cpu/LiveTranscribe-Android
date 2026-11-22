@@ -232,9 +232,11 @@ class CaptionForegroundService : Service() {
             }
 
             launch(Dispatchers.IO) {
+                Log.i("CaptionService", "Translation collector started")
                 translateRequests
                     .debounce(TRANSLATE_DEBOUNCE_MS)
                     .collect {
+                        Log.d("CaptionService", "Translation collector received signal; pendingFinal=${pendingFinalTranslations.size}")
                         while (true) {
                             val final = pendingFinalTranslations.poll() ?: break
                             translateSnapshot(final)
@@ -426,10 +428,12 @@ val onSpeechResult = { result: SpeechResult ->
                 historyOnNextTranslate = false
             }
         }
-        translateRequests.tryEmit(Unit)
+        val emitted = translateRequests.tryEmit(Unit)
+        Log.d("CaptionService", "Translation signal emitted=$emitted final=$isFinal lineId=$lineId textLength=${text.length}")
     }
 
     private suspend fun translateSnapshot(request: TranslationRequest) {
+        Log.i("CaptionService", "translateSnapshot entered lineId=${request.lineId} textLength=${request.text.length}")
         val captionSettings = app.container.settingsRepository.settingsFlow.first()
         val translated = app.container.translationRepository.translate(
             text = request.text,
