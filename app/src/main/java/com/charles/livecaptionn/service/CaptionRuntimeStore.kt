@@ -9,7 +9,8 @@ data class CaptionRuntimeLine(
     val id: Long,
     val originalText: String,
     val translatedText: String = "",
-    val isFinal: Boolean = false
+    val isFinal: Boolean = false,
+    val revision: Long = 0
 )
 
 data class CaptionRuntimeState(

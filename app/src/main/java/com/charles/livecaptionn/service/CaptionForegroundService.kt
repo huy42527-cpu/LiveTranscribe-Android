@@ -71,6 +71,8 @@ class CaptionForegroundService : Service() {
     @Volatile
     private var bufferedLineId: Long = NO_LINE_ID
     @Volatile
+    private var bufferedRevision: Long = 0L
+    @Volatile
     private var historyOnNextTranslate = false
     private val pendingFinalTranslations = ConcurrentLinkedQueue<TranslationRequest>()
 
@@ -241,7 +243,7 @@ class CaptionForegroundService : Service() {
                             translateSnapshot(final)
                         }
                         val partial = synchronized(this@CaptionForegroundService) {
-                            TranslationRequest(bufferedText, bufferedLineId, historyOnNextTranslate)
+                            TranslationRequest(bufferedText, bufferedLineId, bufferedRevision, historyOnNextTranslate)
                                 .also { historyOnNextTranslate = false }
                         }
                         if (partial.text.isNotBlank()) translateSnapshot(partial)
@@ -270,10 +272,11 @@ val onSpeechResult = { result: SpeechResult ->
             )
         }
 
-        val actualLineId = updatedRuntime.transcriptLines.lastOrNull()?.id
-            ?: candidateId
+        val actualLine = updatedRuntime.transcriptLines.lastOrNull()
+        val actualLineId = actualLine?.id ?: candidateId
+        val actualRevision = actualLine?.revision ?: 0L
 
-        queueTranslation(transcript, actualLineId, result.isFinal)
+        queueTranslation(transcript, actualLineId, actualRevision, result.isFinal)
     }
 }
             val mediaProjection = if (currentAudioSource == AudioSource.SYSTEM) {
@@ -415,15 +418,25 @@ val onSpeechResult = { result: SpeechResult ->
         fontId = if (hasPro) settings.overlayFontId else OverlayFontCatalog.FREE_FONT_ID
     )
 
-    private fun queueTranslation(text: String, lineId: Long, isFinal: Boolean = false) {
+    private fun queueTranslation(
+        text: String,
+        lineId: Long,
+        revision: Long,
+        isFinal: Boolean = false
+    ) {
         synchronized(this) {
             bufferedText = text
             bufferedLineId = lineId
+            bufferedRevision = revision
             if (isFinal) {
-                pendingFinalTranslations.add(TranslationRequest(text, lineId, true))
+                pendingFinalTranslations.add(
+                    TranslationRequest(text, lineId, revision, true)
+                )
                 // Finals are retained in the queue; do not translate the same
                 // immutable snapshot again through the mutable partial slot.
                 bufferedText = ""
+                bufferedLineId = NO_LINE_ID
+                bufferedRevision = 0L
                 historyOnNextTranslate = false
             }
         }
@@ -446,32 +459,42 @@ val translatedWithGlossary = applyGlossary(
     app.container.glossary.list()
 )
 
-app.container.runtimeStore.update {
-    val currentLine = it.transcriptLines.firstOrNull { line ->
-        line.id == request.lineId &&
-            line.originalText == request.text
-    }
+val updatedRuntime = app.container.runtimeStore.update { runtime ->
+            val currentLine = runtime.transcriptLines.firstOrNull { line ->
+                line.id == request.lineId &&
+                    line.originalText == request.text &&
+                    line.revision == request.revision
+            }
 
-    it.copy(
-        translatedText = if (currentLine != null) {
-            translatedWithGlossary
-        } else {
-            it.translatedText
-        },
-        transcriptLines = updateTranscriptTranslation(
-            lines = it.transcriptLines,
-            lineId = request.lineId,
-            translatedText = translatedWithGlossary,
-            expectedOriginalText = request.text
-        ),
-        status = if (paused) {
-            RecognitionStatus.PAUSED
-        } else {
-            RecognitionStatus.LISTENING
+            if (currentLine == null) {
+                runtime
+            } else {
+                runtime.copy(
+                    translatedText = translatedWithGlossary,
+                    transcriptLines = updateTranscriptTranslation(
+                        lines = runtime.transcriptLines,
+                        lineId = request.lineId,
+                        translatedText = translatedWithGlossary,
+                        expectedOriginalText = request.text,
+                        expectedRevision = request.revision
+                    ),
+                    status = if (paused) {
+                        RecognitionStatus.PAUSED
+                    } else {
+                        RecognitionStatus.LISTENING
+                    }
+                )
+            }
         }
-    )
-}
-        if (request.saveHistory && captionSettings.saveHistory) {
+
+        val accepted = updatedRuntime.transcriptLines.any { line ->
+            line.id == request.lineId &&
+                line.originalText == request.text &&
+                line.revision == request.revision &&
+                line.translatedText == translatedWithGlossary
+        }
+
+        if (accepted && request.saveHistory && captionSettings.saveHistory) {
             app.container.transcriptHistory.add(
                 TranscriptEntry(
                     originalText = request.text,
@@ -483,7 +506,12 @@ app.container.runtimeStore.update {
         }
     }
 
-    private data class TranslationRequest(val text: String, val lineId: Long, val saveHistory: Boolean)
+    private data class TranslationRequest(
+        val text: String,
+        val lineId: Long,
+        val revision: Long,
+        val saveHistory: Boolean
+    )
 
     private fun showOverlay() {
         if (overlayController != null) return

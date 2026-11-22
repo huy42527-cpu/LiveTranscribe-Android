@@ -36,12 +36,16 @@ internal fun recordTranscriptResult(
         }
 
         val updatedLine = if (last.originalText == originalText) {
-            last.copy(isFinal = isFinal)
+            last.copy(
+                isFinal = isFinal,
+                revision = last.revision + 1
+            )
         } else {
             last.copy(
                 originalText = originalText,
                 translatedText = "",
-                isFinal = isFinal
+                isFinal = isFinal,
+                revision = last.revision + 1
             )
         }
 
@@ -68,14 +72,15 @@ internal fun updateTranscriptTranslation(
     lines: List<CaptionRuntimeLine>,
     lineId: Long,
     translatedText: String,
-    expectedOriginalText: String? = null
+    expectedOriginalText: String? = null,
+    expectedRevision: Long? = null
 ): List<CaptionRuntimeLine> {
     val existingIndex = lines.indexOfFirst { line ->
         line.id == lineId &&
-            (
-                expectedOriginalText == null ||
-                    line.originalText == expectedOriginalText
-                )
+            (expectedOriginalText == null ||
+                line.originalText == expectedOriginalText) &&
+            (expectedRevision == null ||
+                line.revision == expectedRevision)
     }
 
     if (existingIndex < 0) return lines
