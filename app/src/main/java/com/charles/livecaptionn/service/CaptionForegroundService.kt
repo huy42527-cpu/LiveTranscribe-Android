@@ -120,7 +120,10 @@ class CaptionForegroundService : Service() {
                 currentAudioSource = audioSource
                 if (enterForeground(audioSource)) startFlow()
             }
-            ACTION_STOP -> stopFlow()
+            ACTION_STOP -> {
+                Log.w("CaptionService", "STOP requested via ACTION_STOP")
+                stopFlow()
+            }
             ACTION_PAUSE_RESUME -> togglePause()
             ACTION_TOGGLE_MINIMIZE -> toggleMinimized()
         }
@@ -519,6 +522,7 @@ app.container.runtimeStore.update {
     }
 
     private fun stopFlow() {
+        Log.w("CaptionService", "stopFlow() called", Throwable("Stop call stack"))
         captionSessionActive.set(false)
         try { speechEngine?.stop() } catch (_: Throwable) {}
         speechEngine = null
@@ -556,6 +560,7 @@ app.container.runtimeStore.update {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.w("CaptionService", "onDestroy() called", Throwable("Destroy call stack"))
         try { stopFlow() } catch (_: Throwable) {}
     }
 
