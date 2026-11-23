@@ -8,6 +8,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
+import org.vosk.SpeakerModel
+import java.io.File
 
 /**
  * Wrapper around the Vosk Kotlin API with two modes:
@@ -32,16 +34,24 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
     /** Open a streaming session for [languageCode] at [sampleRate]. Returns null if no model. */
     suspend fun openSession(
         languageCode: String,
-        sampleRate: Int
+        sampleRate: Int,
+        speakerModelDir: File? = null
     ): VoskStreamingSession? = withContext(Dispatchers.IO) {
         val model = modelFor(languageCode) ?: return@withContext null
+        var speakerModel: SpeakerModel? = null
         try {
-            val recognizer = Recognizer(model, sampleRate.toFloat()).apply {
+            speakerModel = speakerModelDir?.let { SpeakerModel(it.absolutePath) }
+            val recognizer = if (speakerModel == null) {
+                Recognizer(model, sampleRate.toFloat())
+            } else {
+                Recognizer(model, sampleRate.toFloat(), speakerModel)
+            }.apply {
                 setWords(false)
                 setMaxAlternatives(0)
             }
-            VoskStreamingSession(recognizer)
+            VoskStreamingSession(recognizer, speakerModel)
         } catch (t: Throwable) {
+            try { speakerModel?.close() } catch (_: Throwable) {}
             Log.w("LocalVoskSttClient", "openSession failed for $languageCode", t)
             null
         }
@@ -115,7 +125,8 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
  * so feed(), finish(), and close() cannot overlap.
  */
 class VoskStreamingSession internal constructor(
-    private val recognizer: Recognizer
+    private val recognizer: Recognizer,
+    private val speakerModel: SpeakerModel? = null
 ) {
     @Volatile private var acceptingAudio = true
     private var released = false
@@ -180,6 +191,7 @@ class VoskStreamingSession internal constructor(
         acceptingAudio = false
         released = true
         try { recognizer.close() } catch (_: Throwable) {}
+        try { speakerModel?.close() } catch (_: Throwable) {}
     }
 
     data class FinalResult(
