@@ -56,7 +56,9 @@ class MainViewModel(
                             container.settingsRepository.update { curr ->
                                 curr.copy(
                                     sttBackend = SttBackend.REMOTE_WHISPER,
-                                    translationBackend = TranslationBackend.LIBRE_TRANSLATE
+                                    translationBackend = if (curr.translationBackend == TranslationBackend.ML_KIT) {
+                                        TranslationBackend.LIBRE_TRANSLATE
+                                    } else curr.translationBackend
                                 )
                             }
                         }
