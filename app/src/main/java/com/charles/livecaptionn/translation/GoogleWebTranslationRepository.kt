@@ -44,7 +44,7 @@ class GoogleWebTranslationRepository : TranslationRepository {
                 target = targetCode,
                 text = clean
             )
-            result.firstOrNull()?.trim().orEmpty()
+            GoogleWebTranslationResponseParser.parse(result.string())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
