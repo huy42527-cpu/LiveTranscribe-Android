@@ -880,6 +880,13 @@ private fun LanguageCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                ui.settings.translationBackend == TranslationBackend.GOOGLE_WEB -> {
+                    Text(
+                        text = t["Google Web translation is online and sends recognized speech text to Google. Japanese and Vietnamese are available in the fallback language list."],
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 ui.libreLanguages.isEmpty() && ui.libreError != null -> {
                     Text(
                         text = t.format(
@@ -1439,6 +1446,13 @@ private fun ServerCard(
                     modifier = Modifier.weight(1f)
                 )
             }
+            ChoiceChip(
+                label = t["Google Web (online)"],
+                icon = Icons.Filled.Language,
+                selected = ui.settings.translationBackend == TranslationBackend.GOOGLE_WEB,
+                onClick = { onSelectTranslationBackend(TranslationBackend.GOOGLE_WEB) },
+                modifier = Modifier.fillMaxWidth()
+            )
 
             if (ui.settings.translationBackend == TranslationBackend.ML_KIT) {
                 Text(
@@ -1446,7 +1460,7 @@ private fun ServerCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            } else {
+            } else if (ui.settings.translationBackend == TranslationBackend.LIBRE_TRANSLATE) {
                 OutlinedTextField(
                     value = translateUrl,
                     onValueChange = onTranslateUrlChange,
@@ -1482,6 +1496,12 @@ private fun ServerCard(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+            } else {
+                Text(
+                    text = t["Google Web sends recognized caption text to Google's online translation service. It is unofficial, may be rate-limited, and requires an internet connection."],
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             if (showStt) {
