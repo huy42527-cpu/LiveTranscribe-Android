@@ -75,7 +75,8 @@ class RoutingTranslationRepositoryTest {
         val repo = RoutingTranslationRepository(
             settingsRepository = FakeSettingsRepo(TranslationBackend.ML_KIT),
             mlKit = mlKit,
-            libre = libre
+            libre = libre,
+            googleWeb = google
         )
         repo.translate("a", "en", "vi", autoDetect = false)
         repo.translate("b", "en", "vi", autoDetect = false)
