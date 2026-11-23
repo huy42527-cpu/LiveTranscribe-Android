@@ -16,6 +16,7 @@ import com.charles.livecaptionn.speech.LocalVoskSttClient
 import com.charles.livecaptionn.speech.VoskModelRegistry
 import com.charles.livecaptionn.translation.LanguageCatalogStore
 import com.charles.livecaptionn.translation.LibreTranslateRepository
+import com.charles.livecaptionn.translation.GoogleWebTranslationRepository
 import com.charles.livecaptionn.translation.MlKitTranslationRepository
 import com.charles.livecaptionn.translation.MockTranslationRepository
 import com.charles.livecaptionn.translation.RoutingTranslationRepository
@@ -35,10 +36,12 @@ class AppContainer(context: Context) {
     val runtimeStore: CaptionRuntimeStore = CaptionRuntimeStore()
     private val libreTranslationRepository: TranslationRepository = LibreTranslateRepository(settingsRepository)
     private val mlKitTranslationRepository: TranslationRepository = MlKitTranslationRepository()
+    private val googleWebTranslationRepository: TranslationRepository = GoogleWebTranslationRepository()
     val translationRepository: TranslationRepository = RoutingTranslationRepository(
         settingsRepository = settingsRepository,
         mlKit = mlKitTranslationRepository,
-        libre = libreTranslationRepository
+        libre = libreTranslationRepository,
+        googleWeb = googleWebTranslationRepository
     )
     val mockTranslationRepository: TranslationRepository = MockTranslationRepository()
     val transcriptHistory: TranscriptHistoryStore = TranscriptHistoryStore(context.applicationContext)
