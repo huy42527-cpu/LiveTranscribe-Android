@@ -7,6 +7,7 @@ import com.charles.livecaptionn.service.recordTranscriptResult
 import com.charles.livecaptionn.service.updateTranscriptTranslation
 import com.charles.livecaptionn.speech.RecognitionStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ServiceTransformsTest {
@@ -292,5 +293,56 @@ class ServiceTransformsTest {
             )
         )
         assertEquals("xin chao", overlayTranscriptText(state))
+    }
+
+    @Test
+    fun sungLyricsGetCsLabelEvenWhenSpeakerLabelsAreActive() {
+        val state = CaptionRuntimeState(
+            speakerCount = 2,
+            transcriptLines = listOf(
+                CaptionRuntimeLine(
+                    id = 1L,
+                    originalText = "歌詞",
+                    translatedText = "lời bài hát",
+                    speakerIndex = 0,
+                    isSungLyrics = true
+                )
+            )
+        )
+        assertEquals("CS: lời bài hát", overlayTranscriptText(state))
+    }
+
+    @Test
+    fun recognizedSingingEvidenceIsPreservedFromPartialToFinal() {
+        val partial = recordTranscriptResult(
+            emptyList(),
+            "歌詞",
+            isFinal = false,
+            newLineId = 1L
+        )
+        val final = recordTranscriptResult(
+            partial,
+            "歌詞",
+            isFinal = true,
+            newLineId = 2L,
+            isSungLyrics = true
+        )
+        assertEquals(1, final.size)
+        assertTrue(final.single().isSungLyrics)
+        assertEquals(1L, final.single().id)
+    }
+
+    @Test
+    fun ordinaryRecognizedSpeechDoesNotReceiveCsLabel() {
+        val state = CaptionRuntimeState(
+            transcriptLines = listOf(
+                CaptionRuntimeLine(
+                    id = 1L,
+                    originalText = "こんにちは",
+                    translatedText = "xin chào"
+                )
+            )
+        )
+        assertEquals("xin chào", overlayTranscriptText(state))
     }
 }
