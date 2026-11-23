@@ -1,5 +1,6 @@
 package com.charles.livecaptionn.translation
 
+import android.util.Log
 import com.charles.livecaptionn.data.SettingsRepository
 import com.charles.livecaptionn.settings.TranslationBackend
 import kotlinx.coroutines.flow.first
@@ -26,14 +27,27 @@ class RoutingTranslationRepository(
         sourceCode: String,
         targetCode: String,
         autoDetect: Boolean
-    ): String = activeDelegate().translate(text, sourceCode, targetCode, autoDetect)
-
-    override suspend fun prewarm(sourceCode: String, targetCode: String) {
-        activeDelegate().prewarm(sourceCode, targetCode)
+    ): String {
+        val backend = settingsRepository.settingsFlow.first().translationBackend
+        val delegate = activeDelegate(backend)
+        Log.d(TAG, "Dispatching translation: backend=$backend, source=$sourceCode, target=$targetCode, autoDetect=$autoDetect.")
+        return try {
+            delegate.translate(text, sourceCode, targetCode, autoDetect).also { result ->
+                Log.d(TAG, "Translation backend completed: backend=$backend, blank=${result.isBlank()}, resultLength=${result.length}.")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Translation backend threw: backend=$backend, error=${error.javaClass.simpleName}.")
+            throw error
+        }
     }
 
-    private suspend fun activeDelegate(): TranslationRepository {
+    override suspend fun prewarm(sourceCode: String, targetCode: String) {
         val backend = settingsRepository.settingsFlow.first().translationBackend
+        Log.d(TAG, "Prewarming translation backend: backend=$backend.")
+        activeDelegate(backend).prewarm(sourceCode, targetCode)
+    }
+
+    private suspend fun activeDelegate(backend: TranslationBackend): TranslationRepository {
         if (cachedBackend == backend && cachedDelegate != null) {
             return cachedDelegate!!
         }
@@ -44,6 +58,7 @@ class RoutingTranslationRepository(
         }
         cachedBackend = backend
         cachedDelegate = delegate
+        Log.d(TAG, "Active translation backend changed: backend=$backend.")
         return delegate
     }
 
@@ -51,5 +66,9 @@ class RoutingTranslationRepository(
         mlKit.close()
         libre.close()
         googleWeb.close()
+    }
+
+    private companion object {
+        const val TAG = "TranslationRouter"
     }
 }
