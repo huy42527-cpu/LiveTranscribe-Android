@@ -33,6 +33,7 @@ import com.charles.livecaptionn.speech.AndroidSpeechRecognizerManager
 import com.charles.livecaptionn.speech.RecognitionStatus
 import com.charles.livecaptionn.speech.SpeechEngine
 import com.charles.livecaptionn.speech.SpeechResult
+import com.charles.livecaptionn.speech.SpeakerEmbeddingClusterer
 import com.charles.livecaptionn.speech.StreamingSttEngine
 import com.charles.livecaptionn.speech.SystemAudioEngine
 import kotlinx.coroutines.flow.StateFlow
@@ -64,6 +65,7 @@ class CaptionForegroundService : Service() {
     private val overlayReady = MutableStateFlow(0)
 
     private var speechEngine: SpeechEngine? = null
+    private var speakerClusterer: SpeakerEmbeddingClusterer? = null
     private var overlayController: OverlayController? = null
     private var paused = false
     private var failureMessage: String? = null
@@ -226,6 +228,20 @@ class CaptionForegroundService : Service() {
                 null
             }
 
+            // Provisional thresholds are deliberately conservative and remain
+            // experimental until calibrated against real Japanese live audio.
+            speakerClusterer = if (speakerModelDir != null) {
+                SpeakerEmbeddingClusterer(
+                    minFrames = 50,
+                    matchThreshold = 0.80f,
+                    minMatchMargin = 0.10f,
+                    confirmationSegments = 2,
+                    maxSpeakers = 6
+                )
+            } else {
+                null
+            }
+
             app.container.runtimeStore.update {
                 // Clear a reason left over from an earlier failed start.
                 it.copy(running = true, paused = false, status = RecognitionStatus.LISTENING, lastError = null)
@@ -306,6 +322,34 @@ class CaptionForegroundService : Service() {
                     }
 
                 if (transcript.isNotBlank() && actualLine != null) {
+                    if (result.isFinal) {
+                        val clusterer = speakerClusterer
+                        val embedding = result.speakerEmbedding
+                        if (clusterer != null && embedding != null) {
+                            val decision = clusterer.observe(
+                                segmentId = actualLine.id,
+                                embedding = embedding,
+                                frameCount = result.speakerFrames
+                            )
+                            if (decision.speakerIndex != null) {
+                                val confirmedIds = decision.confirmedSegmentIds.toSet() + actualLine.id
+                                app.container.runtimeStore.update { state ->
+                                    state.copy(
+                                        speakerCount = clusterer.speakerCount(),
+                                        transcriptLines = state.transcriptLines.map { line ->
+                                            if (line.id in confirmedIds) {
+                                                line.copy(speakerIndex = decision.speakerIndex)
+                                            } else line
+                                        }
+                                    )
+                                }
+                            } else {
+                                app.container.runtimeStore.update { state ->
+                                    state.copy(speakerCount = clusterer.speakerCount())
+                                }
+                            }
+                        }
+                    }
                     queueTranslation(
                         transcript,
                         actualLine.id,
@@ -600,6 +644,8 @@ class CaptionForegroundService : Service() {
 
     private fun stopFlow() {
         captionSessionActive.set(false)
+        speakerClusterer?.reset()
+        speakerClusterer = null
         try { speechEngine?.stop() } catch (_: Throwable) {}
         speechEngine = null
         overlayController?.hide()
