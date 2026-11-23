@@ -21,7 +21,8 @@ internal fun recordTranscriptResult(
     lines: List<CaptionRuntimeLine>,
     originalText: String,
     isFinal: Boolean,
-    newLineId: Long
+    newLineId: Long,
+    isSungLyrics: Boolean = false
 ): List<CaptionRuntimeLine> {
     if (originalText.isBlank()) return lines
 
@@ -41,14 +42,16 @@ internal fun recordTranscriptResult(
         val updatedLine = if (last.originalText == originalText) {
             last.copy(
                 isFinal = isFinal,
-                revision = last.revision + 1
+                revision = last.revision + 1,
+                isSungLyrics = last.isSungLyrics || isSungLyrics
             )
         } else {
             last.copy(
                 originalText = originalText,
                 translatedText = "",
                 isFinal = isFinal,
-                revision = last.revision + 1
+                revision = last.revision + 1,
+                isSungLyrics = last.isSungLyrics || isSungLyrics
             )
         }
 
@@ -60,7 +63,8 @@ internal fun recordTranscriptResult(
         lines + CaptionRuntimeLine(
             id = newLineId,
             originalText = originalText,
-            isFinal = isFinal
+            isFinal = isFinal,
+            isSungLyrics = isSungLyrics
         )
     ).takeLast(MAX_TRANSCRIPT_LINES)
 }
@@ -111,11 +115,13 @@ internal fun overlayTranscriptText(
             val translated = line.translatedText.trim().takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
             val speakerIndex = line.speakerIndex
-            if (runtime.speakerCount >= 2 && speakerIndex != null) {
-                val label = ('A'.code + speakerIndex).toChar()
-                "$label: $translated"
-            } else {
-                translated
+            when {
+                line.isSungLyrics -> "CS: $translated"
+                runtime.speakerCount >= 2 && speakerIndex != null -> {
+                    val label = ('A'.code + speakerIndex).toChar()
+                    "$label: $translated"
+                }
+                else -> translated
             }
         }
 
