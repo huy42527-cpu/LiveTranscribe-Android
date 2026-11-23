@@ -40,6 +40,23 @@ class SpeakerEmbeddingClustererTest {
         assertEquals(1, c.speakerCount())
     }
 
+    @Test fun duplicateSegmentIdCannotConfirmNewSpeaker() {
+        val c = clusterer()
+        assertNull(c.observe(7, floatArrayOf(1f, 0f), 80).speakerIndex)
+        assertNull(c.observe(7, floatArrayOf(0.99f, 0.01f), 80).speakerIndex)
+        assertEquals(0, c.speakerCount())
+        assertEquals(0, c.observe(8, floatArrayOf(0.99f, 0.01f), 80).speakerIndex)
+    }
+
+    @Test fun threeIndependentSegmentsAreAllReturnedForRetroactiveLabeling() {
+        val c = clusterer(confirmations = 3)
+        c.observe(20, floatArrayOf(1f, 0f), 80)
+        c.observe(21, floatArrayOf(0.99f, 0.01f), 80)
+        val confirmed = c.observe(22, floatArrayOf(0.98f, 0.02f), 80)
+        assertEquals(0, confirmed.speakerIndex)
+        assertEquals(listOf(20L, 21L, 22L), confirmed.confirmedSegmentIds)
+    }
+
     @Test fun knownSpeakerReturnsSameIndex() {
         val c = clusterer()
         c.observe(1, floatArrayOf(1f, 0f), 80)
