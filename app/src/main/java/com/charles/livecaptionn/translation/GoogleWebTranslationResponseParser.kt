@@ -16,7 +16,7 @@ internal object GoogleWebTranslationResponseParser {
 
         while (reader.hasNext()) {
             when (reader.peek()) {
-                JsonReader.Token.ARRAY -> {
+                JsonReader.Token.BEGIN_ARRAY -> {
                     reader.beginArray()
                     if (reader.hasNext() && reader.peek() == JsonReader.Token.STRING) {
                         translated.append(reader.nextString())
