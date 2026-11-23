@@ -111,8 +111,8 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
 
 /**
  * Live streaming Vosk session. Feed PCM chunks as they arrive; pull
- * partial/final text after each feed. Not thread-safe — call from a single
- * worker coroutine.
+ * partial/final text after each feed. Native Recognizer access is serialized
+ * so feed(), finish(), and close() cannot overlap.
  */
 class VoskStreamingSession internal constructor(
     private val recognizer: Recognizer
