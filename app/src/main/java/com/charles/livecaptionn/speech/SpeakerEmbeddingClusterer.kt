@@ -84,6 +84,10 @@ internal class SpeakerEmbeddingClusterer(
             return Decision()
         }
 
+        // A repeated callback/revision for the same Vosk segment is not
+        // independent evidence and must never confirm a new speaker.
+        if (segmentId in candidate.segmentIds) return Decision()
+
         updateCandidate(candidate, normalized)
         candidate.observations += 1
         if (candidate.segmentIds.size < confirmationSegments) {
