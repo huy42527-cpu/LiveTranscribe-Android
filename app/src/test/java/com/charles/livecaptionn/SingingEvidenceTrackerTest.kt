@@ -22,6 +22,15 @@ class SingingEvidenceTrackerTest {
         assertFalse(evidence.confidentSinger)
     }
 
+    @Test fun equalSpeechAndSingingScoresAreTreatedAsAmbiguous() {
+        val tracker = SingingEvidenceTracker()
+        tracker.add(YamnetSingingClassifier.Scores(0.7f, 0.7f))
+        val evidence = tracker.add(YamnetSingingClassifier.Scores(0.7f, 0.7f))
+        assertTrue(evidence.singingPresent)
+        assertTrue(evidence.speechDominant)
+        assertFalse(evidence.confidentSinger)
+    }
+
     @Test fun ambiguousSingleWindowDoesNotPassHysteresis() {
         val tracker = SingingEvidenceTracker()
         tracker.add(YamnetSingingClassifier.Scores(0.1f, 0.9f))
