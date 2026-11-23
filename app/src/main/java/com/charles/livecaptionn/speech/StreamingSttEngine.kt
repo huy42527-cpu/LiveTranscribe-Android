@@ -57,6 +57,7 @@ class StreamingSttEngine(
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
     private var session: VoskStreamingSession? = null
+    private val sessionLock = Any()
     private var yamnetJob: Job? = null
     // A channel is scoped to one recognition session; stop() closes it.
     // Recreate it on every start so later sessions can classify audio too.
@@ -97,21 +98,23 @@ class StreamingSttEngine(
         latestSingingAtMs = 0L
         try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
-        session?.finish()?.let { finalResult ->
-            if (finalResult.text.isNotBlank()) {
-                onResult(
-                    SpeechResult(
-                        finalResult.text,
-                        isFinal = true,
-                        speakerEmbedding = finalResult.speakerEmbedding,
-                        speakerFrames = finalResult.speakerFrames,
-                        isSinging = finalSingingEvidence
+        synchronized(sessionLock) {
+            session?.finish()?.let { finalResult ->
+                if (finalResult.text.isNotBlank()) {
+                    onResult(
+                        SpeechResult(
+                            finalResult.text,
+                            isFinal = true,
+                            speakerEmbedding = finalResult.speakerEmbedding,
+                            speakerFrames = finalResult.speakerFrames,
+                            isSinging = finalSingingEvidence
+                        )
                     )
-                )
+                }
             }
+            session?.close()
+            session = null
         }
-        session?.close()
-        session = null
         if (audioSource == AudioSource.SYSTEM) {
             try { mediaProjection?.stop() } catch (_: Throwable) {}
         }
@@ -310,7 +313,10 @@ class StreamingSttEngine(
             }
 
             val localSession = session ?: break
-            val result = localSession.feed(buffer, read)
+            val result = synchronized(sessionLock) {
+                if (!running || session !== localSession) null
+                else localSession.feed(buffer, read)
+            } ?: break
 
             if (!running) break
 
