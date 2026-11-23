@@ -10,13 +10,16 @@ data class CaptionRuntimeLine(
     val originalText: String,
     val translatedText: String = "",
     val isFinal: Boolean = false,
-    val revision: Long = 0
+    val revision: Long = 0,
+    /** Internal zero-based Vosk speaker cluster; hidden while only one exists. */
+    val speakerIndex: Int? = null
 )
 
 data class CaptionRuntimeState(
     val originalText: String = "",
     val translatedText: String = "",
     val transcriptLines: List<CaptionRuntimeLine> = emptyList(),
+    val speakerCount: Int = 0,
     val status: RecognitionStatus = RecognitionStatus.IDLE,
     val running: Boolean = false,
     val paused: Boolean = false,
