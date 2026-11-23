@@ -4,20 +4,32 @@ import com.squareup.moshi.JsonReader
 import okio.Buffer
 
 /**
- * Extracts the first translated-text field from Google's array response.
- * Other fields may be null, numeric, or nested and are intentionally ignored.
+ * Extracts translated text from Google's dict-chrome-ex response.
+ * The endpoint normally returns nested sentence pairs such as:
+ * [["translated sentence", "original sentence"]].
  */
 internal object GoogleWebTranslationResponseParser {
     fun parse(json: String): String {
         val reader = JsonReader.of(Buffer().writeUtf8(json))
+        val translated = StringBuilder()
         reader.beginArray()
-        if (!reader.hasNext()) return ""
-        val translated = if (reader.peek() == JsonReader.Token.STRING) {
-            reader.nextString()
-        } else {
-            reader.skipValue()
-            ""
+
+        while (reader.hasNext()) {
+            when (reader.peek()) {
+                JsonReader.Token.ARRAY -> {
+                    reader.beginArray()
+                    if (reader.hasNext() && reader.peek() == JsonReader.Token.STRING) {
+                        translated.append(reader.nextString())
+                    }
+                    while (reader.hasNext()) reader.skipValue()
+                    reader.endArray()
+                }
+                JsonReader.Token.STRING -> translated.append(reader.nextString())
+                else -> reader.skipValue()
+            }
         }
-        return translated.trim()
+
+        reader.endArray()
+        return translated.toString().trim()
     }
 }
