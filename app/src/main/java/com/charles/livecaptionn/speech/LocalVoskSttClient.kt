@@ -135,25 +135,42 @@ class VoskStreamingSession internal constructor(
             Log.w("VoskStreamingSession", "acceptWaveForm failed", t)
             return FeedResult("", accepted = false)
         }
-        val text = if (accepted) {
-            LocalVoskSttClient.extractText(recognizer.result)
+        val parsed = if (accepted) {
+            parseFinalResult(recognizer.result)
         } else {
-            LocalVoskSttClient.extractText(recognizer.partialResult)
+            FinalResult(LocalVoskSttClient.extractText(recognizer.partialResult))
         }
-        return FeedResult(text, accepted)
+        return FeedResult(parsed.text, accepted, parsed.speakerEmbedding, parsed.speakerFrames)
+    }
+
+    private fun parseFinalResult(resultJson: String): FinalResult {
+        return try {
+            val json = JSONObject(resultJson)
+            val embeddingJson = json.optJSONArray("spk")
+            val embedding = if (embeddingJson == null) null else FloatArray(embeddingJson.length()) { index ->
+                embeddingJson.optDouble(index, Double.NaN).toFloat()
+            }
+            FinalResult(
+                text = json.optString("text").trim(),
+                speakerEmbedding = embedding,
+                speakerFrames = json.optInt("spk_frames", 0).coerceAtLeast(0)
+            )
+        } catch (_: Throwable) {
+            FinalResult(LocalVoskSttClient.extractText(resultJson))
+        }
     }
 
     /** Flushes any buffered audio and returns the final remaining text. */
     @Synchronized
-    fun finish(): String {
-        if (!acceptingAudio) return ""
+    fun finish(): FinalResult {
+        if (!acceptingAudio) return FinalResult("")
         // Prevent any new feed() call after the final result has been requested.
         acceptingAudio = false
         return try {
-            LocalVoskSttClient.extractText(recognizer.finalResult)
+            parseFinalResult(recognizer.finalResult)
         } catch (t: Throwable) {
             Log.w("VoskStreamingSession", "finalResult failed", t)
-            ""
+            FinalResult("")
         }
     }
 
@@ -165,10 +182,18 @@ class VoskStreamingSession internal constructor(
         try { recognizer.close() } catch (_: Throwable) {}
     }
 
+    data class FinalResult(
+        val text: String,
+        val speakerEmbedding: FloatArray? = null,
+        val speakerFrames: Int = 0
+    )
+
     data class FeedResult(
         /** Current text — segment if [accepted], partial otherwise. */
         val text: String,
         /** True when Vosk hit a silence boundary and emitted a finalized segment. */
-        val accepted: Boolean
+        val accepted: Boolean,
+        val speakerEmbedding: FloatArray? = null,
+        val speakerFrames: Int = 0
     )
 }
