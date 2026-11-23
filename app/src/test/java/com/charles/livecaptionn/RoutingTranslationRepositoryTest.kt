@@ -18,10 +18,12 @@ class RoutingTranslationRepositoryTest {
     fun translate_routesToMlKit() = runTest {
         val mlKit = FakeTranslationRepository("mlkit-translated")
         val libre = FakeTranslationRepository("libre-translated")
+        val google = FakeTranslationRepository("google-translated")
         val repo = RoutingTranslationRepository(
             settingsRepository = FakeSettingsRepo(TranslationBackend.ML_KIT),
             mlKit = mlKit,
-            libre = libre
+            libre = libre,
+            googleWeb = google
         )
         val result = repo.translate("hello", "en", "vi", autoDetect = false)
         assertEquals("mlkit-translated", result)
@@ -33,6 +35,7 @@ class RoutingTranslationRepositoryTest {
     fun translate_routesToLibre() = runTest {
         val mlKit = FakeTranslationRepository("mlkit")
         val libre = FakeTranslationRepository("libre-translated")
+        val google = FakeTranslationRepository("google-translated")
         val repo = RoutingTranslationRepository(
             settingsRepository = FakeSettingsRepo(TranslationBackend.LIBRE_TRANSLATE),
             mlKit = mlKit,
@@ -44,10 +47,30 @@ class RoutingTranslationRepositoryTest {
         assertEquals(1, libre.translateCount)
     }
 
+
+    @Test
+    fun translate_routesToGoogleWeb() = runTest {
+        val mlKit = FakeTranslationRepository("mlkit")
+        val libre = FakeTranslationRepository("libre")
+        val google = FakeTranslationRepository("google-translated")
+        val repo = RoutingTranslationRepository(
+            settingsRepository = FakeSettingsRepo(TranslationBackend.GOOGLE_WEB),
+            mlKit = mlKit,
+            libre = libre,
+            googleWeb = google
+        )
+        val result = repo.translate("こんにちは", "ja", "vi", autoDetect = false)
+        assertEquals("google-translated", result)
+        assertEquals(0, mlKit.translateCount)
+        assertEquals(0, libre.translateCount)
+        assertEquals(1, google.translateCount)
+    }
+
     @Test
     fun translate_cachesBackend() = runTest {
         val mlKit = FakeTranslationRepository("mlkit")
         val libre = FakeTranslationRepository("libre")
+        val google = FakeTranslationRepository("google")
         val repo = RoutingTranslationRepository(
             settingsRepository = FakeSettingsRepo(TranslationBackend.ML_KIT),
             mlKit = mlKit,
@@ -64,6 +87,7 @@ class RoutingTranslationRepositoryTest {
     fun prewarm_routesCorrectly() = runTest {
         val mlKit = FakeTranslationRepository("x")
         val libre = FakeTranslationRepository("y")
+        val google = FakeTranslationRepository("z")
         val repo = RoutingTranslationRepository(
             settingsRepository = FakeSettingsRepo(TranslationBackend.ML_KIT),
             mlKit = mlKit,
