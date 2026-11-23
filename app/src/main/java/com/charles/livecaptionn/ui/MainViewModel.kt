@@ -122,6 +122,23 @@ class MainViewModel(
                 mutableState.value = mutableState.value.copy(voskDownloadErrors = errors)
             }
         }
+
+        mutableState.value = mutableState.value.copy(
+            speakerModelInstalled = container.voskSpeakerRegistry.isInstalled()
+        )
+        viewModelScope.launch {
+            container.voskSpeakerRegistry.downloading.collectLatest { downloading ->
+                mutableState.value = mutableState.value.copy(speakerModelDownloading = downloading)
+            }
+        }
+        viewModelScope.launch {
+            container.voskSpeakerRegistry.error.collectLatest { error ->
+                mutableState.value = mutableState.value.copy(
+                    speakerModelError = error,
+                    speakerModelInstalled = container.voskSpeakerRegistry.isInstalled()
+                )
+            }
+        }
         if (BuildConfig.GITHUB_SELF_UPDATE_ENABLED) {
             viewModelScope.launch {
                 container.updateChecker.available.collectLatest { info ->
@@ -300,6 +317,31 @@ class MainViewModel(
 
     fun downloadVoskModel(model: VoskModelInfo) {
         viewModelScope.launch { container.voskRegistry.downloadAndInstall(model) }
+    }
+
+    fun updateSpeakerRecognition(enabled: Boolean) {
+        // Speaker settings are session-scoped. Never change the active session.
+        if (mutableState.value.runtime.running) return
+        if (!enabled) {
+            viewModelScope.launch {
+                container.settingsRepository.update { it.copy(speakerRecognitionEnabled = false) }
+            }
+            return
+        }
+        viewModelScope.launch {
+            if (!container.voskSpeakerRegistry.isInstalled()) {
+                val installed = container.voskSpeakerRegistry.downloadAndInstall().isSuccess
+                mutableState.value = mutableState.value.copy(
+                    speakerModelInstalled = container.voskSpeakerRegistry.isInstalled()
+                )
+                if (!installed) return@launch
+            }
+            // A session may have started while the model was downloading.
+            if (mutableState.value.runtime.running) return@launch
+            container.settingsRepository.update {
+                it.copy(speakerRecognitionEnabled = true)
+            }
+        }
     }
 
     fun deleteVoskModel(model: VoskModelInfo) {
