@@ -58,10 +58,9 @@ class StreamingSttEngine(
     private var captureJob: Job? = null
     private var session: VoskStreamingSession? = null
     private var yamnetJob: Job? = null
-    private val yamnetWindows = Channel<FloatArray>(
-        capacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
+    // A channel is scoped to one recognition session; stop() closes it.
+    // Recreate it on every start so later sessions can classify audio too.
+    @Volatile private var yamnetWindows = newYamnetChannel()
     @Volatile private var latestSingingConfident = false
     @Volatile private var latestSingingAtMs = 0L
 
@@ -70,10 +69,18 @@ class StreamingSttEngine(
 
     override fun start() {
         if (running) return
+        yamnetWindows = newYamnetChannel()
+        latestSingingConfident = false
+        latestSingingAtMs = 0L
         running = true
         paused = false
         scope.launch(Dispatchers.IO) { startInternal() }
     }
+
+    private fun newYamnetChannel() = Channel<FloatArray>(
+        capacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
     override fun stop() {
         running = false
@@ -335,6 +342,7 @@ class StreamingSttEngine(
 
     private fun startYamnetWorker() {
         val modelFile = yamnetModelFile ?: return
+        val sessionWindows = yamnetWindows
         yamnetJob = scope.launch(Dispatchers.Default) {
             val classifier = try {
                 YamnetSingingClassifier(modelFile)
@@ -344,7 +352,7 @@ class StreamingSttEngine(
             }
             val tracker = SingingEvidenceTracker()
             try {
-                for (window in yamnetWindows) {
+                for (window in sessionWindows) {
                     val scores = try {
                         classifier.classify(window)
                     } catch (t: Throwable) {
