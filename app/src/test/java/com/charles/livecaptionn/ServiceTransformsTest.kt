@@ -280,7 +280,7 @@ class ServiceTransformsTest {
                 )
             )
         )
-        assertEquals("A: xin chao\\nB: the gioi", overlayTranscriptText(state))
+        assertEquals("A: xin chao\nB: the gioi", overlayTranscriptText(state))
     }
 
     @Test
