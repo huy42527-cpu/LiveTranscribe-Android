@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -25,11 +28,18 @@ class VoskSpeakerModelRegistry(context: Context) {
         .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
+    private val mutableDownloading = MutableStateFlow(false)
+    val downloading: StateFlow<Boolean> = mutableDownloading.asStateFlow()
+    private val mutableError = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = mutableError.asStateFlow()
+
     fun isInstalled(): Boolean = hasRequiredFiles(targetDir)
 
     fun resolveModelDir(): File? = targetDir.takeIf(::hasRequiredFiles)
 
     suspend fun downloadAndInstall(): Result<File> = withContext(Dispatchers.IO) {
+        mutableDownloading.value = true
+        mutableError.value = null
         val zip = File(cacheDir, "vosk-model-spk-0.4.zip")
         val staging = File(targetDir.parentFile, ".staging-vosk-model-spk-0.4")
         val backup = File(targetDir.parentFile, ".backup-vosk-model-spk-0.4")
@@ -79,7 +89,10 @@ class VoskSpeakerModelRegistry(context: Context) {
             if (!targetDir.exists() && backup.exists()) backup.renameTo(targetDir)
             staging.deleteRecursively()
             zip.delete()
+            mutableError.value = t.message ?: "Speaker model download failed"
             Result.failure(t)
+        } finally {
+            mutableDownloading.value = false
         }
     }
 
