@@ -36,21 +36,55 @@ class GoogleWebTranslationRepository : TranslationRepository {
     ): String {
         val clean = text.trim()
         if (clean.isEmpty()) return clean
-        if (targetCode.isBlank()) return ""
+        if (targetCode.isBlank()) {
+            Log.w(TAG, "Translation skipped: target language is blank.")
+            return ""
+        }
 
         return try {
-            val result = api.translate(
+            val response = api.translate(
                 source = if (autoDetect || sourceCode.isBlank()) "auto" else sourceCode,
                 target = targetCode,
                 text = clean
             )
-            GoogleWebTranslationResponseParser.parse(result.string())
+            val contentType = response.headers()["Content-Type"]?.substringBefore(";") ?: "unknown"
+            if (!response.isSuccessful) {
+                response.errorBody()?.close()
+                Log.w(TAG, "HTTP failure: code=${response.code()}, contentType=$contentType.")
+                return ""
+            }
+
+            val body = response.body()
+            if (body == null) {
+                Log.w(TAG, "HTTP success without response body: code=${response.code()}.")
+                return ""
+            }
+
+            val raw = body.string()
+            if (raw.isBlank()) {
+                Log.w(TAG, "HTTP success with empty response body: code=${response.code()}, contentType=$contentType.")
+                return ""
+            }
+
+            try {
+                GoogleWebTranslationResponseParser.parse(raw).also { translated ->
+                    if (translated.isBlank()) {
+                        // Log only the top-level JSON shape, never response text.
+                        val shape = raw.trimStart().firstOrNull() ?: ' '
+                        Log.w(TAG, "Parser returned blank: code=${response.code()}, contentType=$contentType, bodyStart=$shape.")
+                    } else {
+                        Log.d(TAG, "Translation succeeded: code=${response.code()}, contentType=$contentType.")
+                    }
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "Response parsing failed: ${error.javaClass.simpleName}, code=${response.code()}, contentType=$contentType.")
+                ""
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            // Do not log caption text or request URLs: they may contain private speech.
-            // Avoid logging the exception: Retrofit/OkHttp messages may contain the full URL and caption query.
-            Log.w(TAG, "Google Web translation request failed (${error.javaClass.simpleName}).")
+            // Do not log caption text, request URLs, or exception messages.
+            Log.w(TAG, "Request failed: ${error.javaClass.simpleName}.")
             ""
         }
     }
