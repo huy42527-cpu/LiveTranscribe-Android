@@ -1448,7 +1448,7 @@ private fun ServerCard(
             }
             ChoiceChip(
                 label = t["Google Web (online)"],
-                icon = Icons.Filled.Language,
+                icon = Icons.Filled.Translate,
                 selected = ui.settings.translationBackend == TranslationBackend.GOOGLE_WEB,
                 onClick = { onSelectTranslationBackend(TranslationBackend.GOOGLE_WEB) },
                 modifier = Modifier.fillMaxWidth()
