@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -21,12 +24,19 @@ class YamnetModelRegistry(context: Context) {
         .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
+    private val mutableDownloading = MutableStateFlow(false)
+    val downloading: StateFlow<Boolean> = mutableDownloading.asStateFlow()
+    private val mutableError = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = mutableError.asStateFlow()
+
     fun isInstalled(): Boolean = target.isFile && target.length() == MODEL_BYTES &&
         sha256(target) == MODEL_SHA256
 
     fun modelFile(): File? = target.takeIf(::isInstalled)
 
     suspend fun downloadAndInstall(): Result<File> = withContext(Dispatchers.IO) {
+        mutableDownloading.value = true
+        mutableError.value = null
         try {
             target.parentFile?.mkdirs()
             client.newCall(Request.Builder().url(MODEL_URL).build()).execute().use { response ->
@@ -55,7 +65,10 @@ class YamnetModelRegistry(context: Context) {
             Log.w(TAG, "YAMNet model installation failed", t)
             staging.delete()
             if (!target.exists() && backup.exists()) backup.renameTo(target)
+            mutableError.value = t.message ?: "YAMNet download failed"
             Result.failure(t)
+        } finally {
+            mutableDownloading.value = false
         }
     }
 
