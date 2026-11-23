@@ -15,6 +15,7 @@ import com.charles.livecaptionn.service.CaptionRuntimeStore
 import com.charles.livecaptionn.speech.LocalVoskSttClient
 import com.charles.livecaptionn.speech.VoskModelRegistry
 import com.charles.livecaptionn.speech.VoskSpeakerModelRegistry
+import com.charles.livecaptionn.speech.YamnetModelRegistry
 import com.charles.livecaptionn.translation.LanguageCatalogStore
 import com.charles.livecaptionn.translation.LibreTranslateRepository
 import com.charles.livecaptionn.translation.GoogleWebTranslationRepository
@@ -50,6 +51,7 @@ class AppContainer(context: Context) {
     val glossary: GlossaryRepository = FileGlossaryRepository(context.applicationContext)
     val voskRegistry: VoskModelRegistry = VoskModelRegistry(context.applicationContext)
     val voskSpeakerRegistry: VoskSpeakerModelRegistry = VoskSpeakerModelRegistry(context.applicationContext)
+    val yamnetRegistry: YamnetModelRegistry = YamnetModelRegistry(context.applicationContext)
     val localVoskClient: LocalVoskSttClient = LocalVoskSttClient(voskRegistry)
     val languageCatalogStore: LanguageCatalogStore = LanguageCatalogStore(settingsRepository, appScope)
     val updateChecker: UpdateChecker = UpdateChecker()
