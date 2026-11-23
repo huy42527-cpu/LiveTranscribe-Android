@@ -32,7 +32,7 @@ class YamnetModelRegistry(context: Context) {
     fun isInstalled(): Boolean = target.isFile && target.length() == MODEL_BYTES &&
         sha256(target) == MODEL_SHA256
 
-    fun modelFile(): File? = target.takeIf(::isInstalled)
+    fun modelFile(): File? = target.takeIf { isInstalled() }
 
     suspend fun downloadAndInstall(): Result<File> = withContext(Dispatchers.IO) {
         mutableDownloading.value = true
