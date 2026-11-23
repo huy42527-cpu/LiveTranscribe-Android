@@ -117,7 +117,8 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
 class VoskStreamingSession internal constructor(
     private val recognizer: Recognizer
 ) {
-    @Volatile private var closed = false
+    @Volatile private var acceptingAudio = true
+    private var released = false
 
     /**
      * Feed a chunk of 16-bit LE PCM. Returns [FeedResult] indicating whether a
@@ -127,7 +128,7 @@ class VoskStreamingSession internal constructor(
      */
     @Synchronized
     fun feed(pcm: ByteArray, length: Int = pcm.size): FeedResult {
-        if (closed) return FeedResult("", accepted = false)
+        if (!acceptingAudio) return FeedResult("", accepted = false)
         val accepted = try {
             recognizer.acceptWaveForm(pcm, length)
         } catch (t: Throwable) {
@@ -145,7 +146,9 @@ class VoskStreamingSession internal constructor(
     /** Flushes any buffered audio and returns the final remaining text. */
     @Synchronized
     fun finish(): String {
-        if (closed) return ""
+        if (!acceptingAudio) return ""
+        // Prevent any new feed() call after the final result has been requested.
+        acceptingAudio = false
         return try {
             LocalVoskSttClient.extractText(recognizer.finalResult)
         } catch (t: Throwable) {
@@ -156,8 +159,9 @@ class VoskStreamingSession internal constructor(
 
     @Synchronized
     fun close() {
-        if (closed) return
-        closed = true
+        if (released) return
+        acceptingAudio = false
+        released = true
         try { recognizer.close() } catch (_: Throwable) {}
     }
 
