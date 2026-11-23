@@ -61,8 +61,8 @@ internal class YamnetSingingClassifier(modelFile: File) : AutoCloseable {
 
 /**
  * Hysteresis over overlapping windows. Two positive windows among the latest
- * three are required; speech-dominant windows remain ambiguous and do not
- * qualify for a singer label.
+ * three are required; speech must score clearly below singing. Similar
+ * speech/singing scores are treated as mixed/ambiguous and do not qualify.
  */
 internal class SingingEvidenceTracker(
     private val singingThreshold: Float = 0.55f,
@@ -95,13 +95,13 @@ internal class SingingEvidenceTracker(
         val speech = recent.map { it.speech }.average().toFloat()
         val positives = recent.count { it.singing >= singingThreshold }
         val present = positives >= positiveWindowsRequired
-        val speechDominant = speech >= singing + speechDominanceMargin
+        val speechDominant = speech >= singing - speechDominanceMargin
         return Evidence(
             singingScore = singing,
             speechScore = speech,
             singingPresent = present,
             speechDominant = speechDominant,
-            confidentSinger = present && !speechDominant
+            confidentSinger = present && singing >= speech + speechDominanceMargin
         )
     }
 
