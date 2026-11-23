@@ -139,6 +139,23 @@ class MainViewModel(
                 )
             }
         }
+
+        mutableState.value = mutableState.value.copy(
+            yamnetModelInstalled = container.yamnetRegistry.isInstalled()
+        )
+        viewModelScope.launch {
+            container.yamnetRegistry.downloading.collectLatest { downloading ->
+                mutableState.value = mutableState.value.copy(yamnetModelDownloading = downloading)
+            }
+        }
+        viewModelScope.launch {
+            container.yamnetRegistry.error.collectLatest { error ->
+                mutableState.value = mutableState.value.copy(
+                    yamnetModelError = error,
+                    yamnetModelInstalled = container.yamnetRegistry.isInstalled()
+                )
+            }
+        }
         if (BuildConfig.GITHUB_SELF_UPDATE_ENABLED) {
             viewModelScope.launch {
                 container.updateChecker.available.collectLatest { info ->
@@ -336,7 +353,14 @@ class MainViewModel(
                 )
                 if (!installed) return@launch
             }
-            // A session may have started while the model was downloading.
+            if (!container.yamnetRegistry.isInstalled()) {
+                val installed = container.yamnetRegistry.downloadAndInstall().isSuccess
+                mutableState.value = mutableState.value.copy(
+                    yamnetModelInstalled = container.yamnetRegistry.isInstalled()
+                )
+                if (!installed) return@launch
+            }
+            // A session may have started while either model was downloading.
             if (mutableState.value.runtime.running) return@launch
             container.settingsRepository.update {
                 it.copy(speakerRecognitionEnabled = true)
