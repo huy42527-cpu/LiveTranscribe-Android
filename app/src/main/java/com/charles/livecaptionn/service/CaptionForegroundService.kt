@@ -228,6 +228,18 @@ class CaptionForegroundService : Service() {
                 null
             }
 
+            val yamnetModelFile = if (
+                settings.sttBackend == SttBackend.LOCAL_VOSK &&
+                settings.speakerRecognitionEnabled
+            ) {
+                app.container.yamnetRegistry.modelFile() ?: run {
+                    failAndStop("Singing model is missing. Turn voice labels off and enable them again to download it.")
+                    return@launch
+                }
+            } else {
+                null
+            }
+
             // Provisional thresholds are deliberately conservative and remain
             // experimental until calibrated against real Japanese live audio.
             speakerClusterer = if (speakerModelDir != null) {
@@ -308,7 +320,8 @@ class CaptionForegroundService : Service() {
                             lines = runtime.transcriptLines,
                             originalText = transcript,
                             isFinal = result.isFinal,
-                            newLineId = candidateId
+                            newLineId = candidateId,
+                            isSungLyrics = result.isFinal && result.isSinging
                         ),
                         status = RecognitionStatus.PROCESSING,
                         lastError = null
@@ -325,7 +338,7 @@ class CaptionForegroundService : Service() {
                     if (result.isFinal) {
                         val clusterer = speakerClusterer
                         val embedding = result.speakerEmbedding
-                        if (clusterer != null && embedding != null) {
+                        if (clusterer != null && embedding != null && !result.isSinging) {
                             val decision = clusterer.observe(
                                 segmentId = actualLine.id,
                                 embedding = embedding,
@@ -398,7 +411,8 @@ class CaptionForegroundService : Service() {
                     scope = serviceScope,
                     onResult = onSpeechResult,
                     onError = errorSink,
-                    speakerModelDir = speakerModelDir
+                    speakerModelDir = speakerModelDir,
+                    yamnetModelFile = yamnetModelFile
                 )
                 speechEngine = engine
                 observeEngineStatus(engine.status)
