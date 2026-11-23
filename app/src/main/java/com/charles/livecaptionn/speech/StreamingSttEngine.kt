@@ -78,14 +78,16 @@ class StreamingSttEngine(
     override fun stop() {
         running = false
         paused = false
-        captureJob?.cancel()
+        val finalSingingEvidence = hasRecentSingingEvidence()
+        val activeCaptureJob = captureJob
         captureJob = null
+        try { audioRecord?.stop() } catch (_: Throwable) {}
+        activeCaptureJob?.cancel()
         yamnetWindows.close()
         yamnetJob?.cancel()
         yamnetJob = null
         latestSingingConfident = false
         latestSingingAtMs = 0L
-        try { audioRecord?.stop() } catch (_: Throwable) {}
         try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
         session?.finish()?.let { finalResult ->
@@ -96,7 +98,7 @@ class StreamingSttEngine(
                         isFinal = true,
                         speakerEmbedding = finalResult.speakerEmbedding,
                         speakerFrames = finalResult.speakerFrames,
-                        isSinging = hasRecentSingingEvidence()
+                        isSinging = finalSingingEvidence
                     )
                 )
             }
