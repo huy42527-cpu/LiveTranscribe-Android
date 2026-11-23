@@ -7,10 +7,13 @@ package com.charles.livecaptionn.settings
  *   language pair is downloaded (once). ~30 MB per language, ~59 languages.
  * - [LIBRE_TRANSLATE]: HTTP call to a user-configured LibreTranslate server.
  *   Supports whatever languages the server has Argos packages for.
+ * - [GOOGLE_WEB]: Optional online translation through Google's undocumented
+ *   web endpoint. Availability and usage limits are not guaranteed.
  */
 enum class TranslationBackend {
     ML_KIT,
-    LIBRE_TRANSLATE;
+    LIBRE_TRANSLATE,
+    GOOGLE_WEB;
 
     companion object {
         fun fromName(name: String?): TranslationBackend =
