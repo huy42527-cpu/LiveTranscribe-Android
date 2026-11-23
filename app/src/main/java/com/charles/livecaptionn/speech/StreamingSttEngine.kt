@@ -103,6 +103,12 @@ class StreamingSttEngine(
             running = false
             return
         }
+        // A stop can arrive while the model is loading. Do not create audio
+        // resources for a session that has already been cancelled.
+        if (!running) {
+            localSession.close()
+            return
+        }
         session = localSession
 
         val record = try {
@@ -113,6 +119,13 @@ class StreamingSttEngine(
             statusMutable.value = RecognitionStatus.ERROR
             session?.close(); session = null
             running = false
+            return
+        }
+
+        if (!running) {
+            record?.release()
+            localSession.close()
+            if (session === localSession) session = null
             return
         }
 
@@ -130,6 +143,13 @@ class StreamingSttEngine(
             return
         }
         audioRecord = record
+        if (!running) {
+            record.release()
+            if (audioRecord === record) audioRecord = null
+            localSession.close()
+            if (session === localSession) session = null
+            return
+        }
 
         try {
             record.startRecording()
@@ -151,6 +171,15 @@ class StreamingSttEngine(
             audioRecord = null
             session?.close(); session = null
             running = false
+            return
+        }
+
+        if (!running) {
+            try { record.stop() } catch (_: Throwable) {}
+            record.release()
+            if (audioRecord === record) audioRecord = null
+            localSession.close()
+            if (session === localSession) session = null
             return
         }
 
@@ -212,6 +241,8 @@ class StreamingSttEngine(
 
             val localSession = session ?: break
             val result = localSession.feed(buffer, read)
+
+            if (!running) break
 
             if (result.accepted) {
                 // Vosk hit a silence/segment boundary and emitted a finalized chunk.
