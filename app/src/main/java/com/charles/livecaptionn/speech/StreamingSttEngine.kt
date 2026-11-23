@@ -10,6 +10,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.charles.livecaptionn.settings.AudioSource
@@ -17,6 +18,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
@@ -44,7 +47,8 @@ class StreamingSttEngine(
     private val scope: CoroutineScope,
     private val onResult: (SpeechResult) -> Unit,
     private val onError: (String?) -> Unit = {},
-    private val speakerModelDir: File? = null
+    private val speakerModelDir: File? = null,
+    private val yamnetModelFile: File? = null
 ) : SpeechEngine {
 
     private val statusMutable = MutableStateFlow(RecognitionStatus.IDLE)
@@ -53,6 +57,13 @@ class StreamingSttEngine(
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
     private var session: VoskStreamingSession? = null
+    private var yamnetJob: Job? = null
+    private val yamnetWindows = Channel<FloatArray>(
+        capacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    @Volatile private var latestSingingConfident = false
+    @Volatile private var latestSingingAtMs = 0L
 
     @Volatile private var running = false
     @Volatile private var paused = false
@@ -69,6 +80,11 @@ class StreamingSttEngine(
         paused = false
         captureJob?.cancel()
         captureJob = null
+        yamnetWindows.close()
+        yamnetJob?.cancel()
+        yamnetJob = null
+        latestSingingConfident = false
+        latestSingingAtMs = 0L
         try { audioRecord?.stop() } catch (_: Throwable) {}
         try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
@@ -79,7 +95,8 @@ class StreamingSttEngine(
                         finalResult.text,
                         isFinal = true,
                         speakerEmbedding = finalResult.speakerEmbedding,
-                        speakerFrames = finalResult.speakerFrames
+                        speakerFrames = finalResult.speakerFrames,
+                        isSinging = hasRecentSingingEvidence()
                     )
                 )
             }
@@ -201,6 +218,7 @@ class StreamingSttEngine(
         statusMutable.value = RecognitionStatus.LISTENING
         onError(null)
 
+        startYamnetWorker()
         captureJob = scope.launch(Dispatchers.Default) { captureLoop(record) }
     }
 
@@ -209,6 +227,10 @@ class StreamingSttEngine(
         var silentChunkStreak = 0
         var lastEmittedPartial = ""
         var sawAnyAudioEver = false
+        val yamnetRing = FloatArray(YamnetSingingClassifier.WINDOW_SAMPLES)
+        var yamnetWriteIndex = 0
+        var yamnetSampleCount = 0
+        var samplesSinceYamnetWindow = 0
 
         while (scope.isActive && running) {
             if (paused) {
@@ -237,6 +259,30 @@ class StreamingSttEngine(
 
             val avgAbs = averageAbsAmplitude(buffer, read)
             val isSilent = avgAbs < SILENCE_AVERAGE_ABS_THRESHOLD
+
+            // Copy the same captured PCM into a bounded, asynchronous classifier
+            // branch. Vosk never waits for YAMNet inference.
+            if (yamnetModelFile != null) {
+                var sampleOffset = 0
+                while (sampleOffset + 1 < read) {
+                    val raw = (buffer[sampleOffset].toInt() and 0xFF) or
+                        (buffer[sampleOffset + 1].toInt() shl 8)
+                    yamnetRing[yamnetWriteIndex] = raw.toShort().toInt() / 32768f
+                    yamnetWriteIndex = (yamnetWriteIndex + 1) % yamnetRing.size
+                    yamnetSampleCount = (yamnetSampleCount + 1).coerceAtMost(yamnetRing.size)
+                    samplesSinceYamnetWindow += 1
+                    if (yamnetSampleCount == yamnetRing.size &&
+                        samplesSinceYamnetWindow >= YAMNET_HOP_SAMPLES
+                    ) {
+                        val window = FloatArray(yamnetRing.size) { index ->
+                            yamnetRing[(yamnetWriteIndex + index) % yamnetRing.size]
+                        }
+                        yamnetWindows.trySend(window)
+                        samplesSinceYamnetWindow = 0
+                    }
+                    sampleOffset += 2
+                }
+            }
 
             if (isSilent) {
                 silentChunkStreak += 1
@@ -267,7 +313,8 @@ class StreamingSttEngine(
                             result.text,
                             isFinal = true,
                             speakerEmbedding = result.speakerEmbedding,
-                            speakerFrames = result.speakerFrames
+                            speakerFrames = result.speakerFrames,
+                            isSinging = hasRecentSingingEvidence()
                         )
                     )
                     lastEmittedPartial = ""
@@ -282,6 +329,39 @@ class StreamingSttEngine(
                 statusMutable.value = RecognitionStatus.LISTENING
             }
         }
+    }
+
+    private fun startYamnetWorker() {
+        val modelFile = yamnetModelFile ?: return
+        yamnetJob = scope.launch(Dispatchers.Default) {
+            val classifier = try {
+                YamnetSingingClassifier(modelFile)
+            } catch (t: Throwable) {
+                Log.w(TAG, "YAMNet unavailable; continuing Vosk without singing labels", t)
+                return@launch
+            }
+            val tracker = SingingEvidenceTracker()
+            try {
+                for (window in yamnetWindows) {
+                    val scores = try {
+                        classifier.classify(window)
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "YAMNet inference failed; dropping this window", t)
+                        continue
+                    }
+                    val evidence = tracker.add(scores)
+                    latestSingingConfident = evidence.confidentSinger
+                    latestSingingAtMs = SystemClock.elapsedRealtime()
+                }
+            } finally {
+                classifier.close()
+            }
+        }
+    }
+
+    private fun hasRecentSingingEvidence(): Boolean {
+        return latestSingingConfident &&
+            SystemClock.elapsedRealtime() - latestSingingAtMs <= YAMNET_EVIDENCE_MAX_AGE_MS
     }
 
     private fun buildAudioRecord(): AudioRecord? {
@@ -340,6 +420,8 @@ class StreamingSttEngine(
         private const val SAMPLE_RATE = 16_000
         /** ~100ms at 16kHz mono 16-bit = 3200 bytes. Small chunks = live partials. */
         private const val CHUNK_BYTES = 3200
+        private const val YAMNET_HOP_SAMPLES = 7_680 // 480 ms, 50% overlap
+        private const val YAMNET_EVIDENCE_MAX_AGE_MS = 1_200L
         private const val SILENCE_AVERAGE_ABS_THRESHOLD = 120
         private const val SILENT_CHUNKS_BEFORE_SYSTEM_HINT = 30 // ~3s of silence
         private const val NO_CAPTURABLE_AUDIO_MESSAGE =
