@@ -70,8 +70,17 @@ class StreamingSttEngine(
         try { audioRecord?.stop() } catch (_: Throwable) {}
         try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
-        session?.finish()?.let { remainder ->
-            if (remainder.isNotBlank()) onResult(SpeechResult(remainder, isFinal = true))
+        session?.finish()?.let { finalResult ->
+            if (finalResult.text.isNotBlank()) {
+                onResult(
+                    SpeechResult(
+                        finalResult.text,
+                        isFinal = true,
+                        speakerEmbedding = finalResult.speakerEmbedding,
+                        speakerFrames = finalResult.speakerFrames
+                    )
+                )
+            }
         }
         session?.close()
         session = null
@@ -247,7 +256,14 @@ class StreamingSttEngine(
             if (result.accepted) {
                 // Vosk hit a silence/segment boundary and emitted a finalized chunk.
                 if (result.text.isNotBlank()) {
-                    onResult(SpeechResult(result.text, isFinal = true))
+                    onResult(
+                        SpeechResult(
+                            result.text,
+                            isFinal = true,
+                            speakerEmbedding = result.speakerEmbedding,
+                            speakerFrames = result.speakerFrames
+                        )
+                    )
                     lastEmittedPartial = ""
                 }
             } else if (result.text.isNotBlank() && result.text != lastEmittedPartial) {
