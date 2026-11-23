@@ -31,6 +31,8 @@ data class CaptionSettings(
     val saveHistory: Boolean = true,
     /** Whether the user acknowledged/dismissed the borderline hardware warning. */
     val borderlineWarningDismissed: Boolean = false,
+    /** Enable local speaker labels for Vosk sessions only. */
+    val speakerRecognitionEnabled: Boolean = false,
     /** Optional simulated compatibility tier for manual testing (e.g. PASSED, BORDERLINE, UNSUPPORTED). */
     val simulatedCompatibilityTier: String? = null
 ) {
