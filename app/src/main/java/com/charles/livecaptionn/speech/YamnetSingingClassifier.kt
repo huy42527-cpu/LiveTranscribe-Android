@@ -12,7 +12,7 @@ import java.nio.ByteOrder
 internal class YamnetSingingClassifier(modelFile: File) : AutoCloseable {
     private val interpreter = Interpreter(
         modelFile,
-        Interpreter.Options().setNumThreads(2)
+        Interpreter.Options().setNumThreads(1)
     )
     private val input = ByteBuffer.allocateDirect(WINDOW_SAMPLES * 4)
         .order(ByteOrder.nativeOrder())
