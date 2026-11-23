@@ -77,5 +77,6 @@ data class MainUiState(
         TranslationBackend.ML_KIT -> MlKitLanguages.LIST
         TranslationBackend.LIBRE_TRANSLATE ->
             if (libreLanguages.isNotEmpty()) libreLanguages else Language.FALLBACK
+        TranslationBackend.GOOGLE_WEB -> Language.FALLBACK
     }
 }
