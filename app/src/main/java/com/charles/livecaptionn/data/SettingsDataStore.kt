@@ -46,6 +46,7 @@ class SettingsDataStore(private val context: Context) : SettingsRepository {
             p[ONBOARDING_COMPLETE] = next.onboardingComplete
             p[SAVE_HISTORY] = next.saveHistory
             p[BORDERLINE_WARNING_DISMISSED] = next.borderlineWarningDismissed
+            p[SPEAKER_RECOGNITION] = next.speakerRecognitionEnabled
             if (next.simulatedCompatibilityTier != null) {
                 p[SIMULATED_TIER] = next.simulatedCompatibilityTier
             } else {
@@ -79,6 +80,7 @@ class SettingsDataStore(private val context: Context) : SettingsRepository {
             onboardingComplete = this[ONBOARDING_COMPLETE] ?: defaults.onboardingComplete,
             saveHistory = this[SAVE_HISTORY] ?: defaults.saveHistory,
             borderlineWarningDismissed = this[BORDERLINE_WARNING_DISMISSED] ?: defaults.borderlineWarningDismissed,
+            speakerRecognitionEnabled = this[SPEAKER_RECOGNITION] ?: defaults.speakerRecognitionEnabled,
             simulatedCompatibilityTier = this[SIMULATED_TIER]
         )
     }
@@ -106,6 +108,7 @@ class SettingsDataStore(private val context: Context) : SettingsRepository {
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val SAVE_HISTORY = booleanPreferencesKey("save_history")
         val BORDERLINE_WARNING_DISMISSED = booleanPreferencesKey("borderline_warning_dismissed")
+        val SPEAKER_RECOGNITION = booleanPreferencesKey("speaker_recognition_enabled")
         val SIMULATED_TIER = stringPreferencesKey("simulated_tier")
     }
 }
