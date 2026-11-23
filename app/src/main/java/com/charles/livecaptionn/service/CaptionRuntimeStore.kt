@@ -12,7 +12,9 @@ data class CaptionRuntimeLine(
     val isFinal: Boolean = false,
     val revision: Long = 0,
     /** Internal zero-based Vosk speaker cluster; hidden while only one exists. */
-    val speakerIndex: Int? = null
+    val speakerIndex: Int? = null,
+    /** This line was recognized while singing was the dominant vocal event. */
+    val isSungLyrics: Boolean = false
 )
 
 data class CaptionRuntimeState(
