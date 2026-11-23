@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import java.io.File
 
 /**
  * Continuous, low-latency speech-to-text engine backed by a live
@@ -42,7 +43,8 @@ class StreamingSttEngine(
     private val localSttClient: LocalVoskSttClient,
     private val scope: CoroutineScope,
     private val onResult: (SpeechResult) -> Unit,
-    private val onError: (String?) -> Unit = {}
+    private val onError: (String?) -> Unit = {},
+    private val speakerModelDir: File? = null
 ) : SpeechEngine {
 
     private val statusMutable = MutableStateFlow(RecognitionStatus.IDLE)
@@ -102,7 +104,11 @@ class StreamingSttEngine(
     }
 
     private suspend fun startInternal() {
-        val localSession = localSttClient.openSession(languageCode, SAMPLE_RATE)
+        val localSession = localSttClient.openSession(
+            languageCode = languageCode,
+            sampleRate = SAMPLE_RATE,
+            speakerModelDir = speakerModelDir
+        )
         if (localSession == null) {
             onError(
                 "No on-device model installed for '$languageCode'. " +
