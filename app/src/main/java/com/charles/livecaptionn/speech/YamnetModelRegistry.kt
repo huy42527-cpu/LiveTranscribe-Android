@@ -2,6 +2,7 @@ package com.charles.livecaptionn.speech
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,8 +45,23 @@ class YamnetModelRegistry(context: Context) {
                     throw java.io.IOException("YAMNet download failed: HTTP ${response.code}")
                 }
                 val body = response.body ?: throw java.io.IOException("YAMNet download was empty")
+                if (body.contentLength() > MODEL_BYTES) {
+                    throw java.io.IOException("YAMNet model exceeds the expected download size")
+                }
                 FileOutputStream(staging).use { output ->
-                    body.byteStream().use { it.copyTo(output) }
+                    body.byteStream().use { input ->
+                        val buffer = ByteArray(16 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > MODEL_BYTES) {
+                                throw java.io.IOException("YAMNet download exceeded the expected size")
+                            }
+                            output.write(buffer, 0, read)
+                        }
+                    }
                 }
             }
             if (staging.length() != MODEL_BYTES || sha256(staging) != MODEL_SHA256) {
@@ -62,6 +78,7 @@ class YamnetModelRegistry(context: Context) {
             backup.delete()
             Result.success(target)
         } catch (t: Throwable) {
+            if (t is CancellationException) throw t
             Log.w(TAG, "YAMNet model installation failed", t)
             staging.delete()
             if (!target.exists() && backup.exists()) backup.renameTo(target)
