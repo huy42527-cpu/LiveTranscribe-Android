@@ -747,14 +747,15 @@ private fun AudioSourceCard(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(t["Speaker labels (experimental)"], style = MaterialTheme.typography.bodyMedium)
+                        Text(t["Voice labels A/B/CS (experimental)"], style = MaterialTheme.typography.bodyMedium)
                         Text(
                             text = when {
                                 ui.runtime.running -> t["Locked until this session ends"]
-                                ui.speakerModelDownloading -> t["Downloading speaker model…"]
+                                ui.speakerModelDownloading || ui.yamnetModelDownloading -> t["Downloading voice models…"]
                                 ui.speakerModelError != null -> ui.speakerModelError
-                                ui.speakerModelInstalled -> t["Speaker model ready"]
-                                else -> t["Downloads a separate 13 MB model"]
+                                ui.yamnetModelError != null -> ui.yamnetModelError
+                                ui.speakerModelInstalled && ui.yamnetModelInstalled -> t["Speaker and singing models ready"]
+                                else -> t["Downloads two separate models (about 17 MB total)"]
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -763,7 +764,7 @@ private fun AudioSourceCard(
                     Switch(
                         checked = ui.settings.speakerRecognitionEnabled,
                         onCheckedChange = viewModel::updateSpeakerRecognition,
-                        enabled = !ui.runtime.running && !ui.speakerModelDownloading
+                        enabled = !ui.runtime.running && !ui.speakerModelDownloading && !ui.yamnetModelDownloading
                     )
                 }
                 if (!anyLargeInstalled) {
