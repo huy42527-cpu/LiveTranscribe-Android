@@ -101,7 +101,7 @@ internal class SingingEvidenceTracker(
             speechScore = speech,
             singingPresent = present,
             speechDominant = speechDominant,
-            confidentSinger = present && singing >= speech + speechDominanceMargin
+            confidentSinger = present && singing > speech + speechDominanceMargin
         )
     }
 
