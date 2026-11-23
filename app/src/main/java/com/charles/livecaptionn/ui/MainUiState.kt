@@ -25,6 +25,9 @@ data class MainUiState(
     val speakerModelInstalled: Boolean = false,
     val speakerModelDownloading: Boolean = false,
     val speakerModelError: String? = null,
+    val yamnetModelInstalled: Boolean = false,
+    val yamnetModelDownloading: Boolean = false,
+    val yamnetModelError: String? = null,
     val availableUpdate: UpdateInfo? = null,
     /** True when the running APK was installed from the Google Play Store. Used
      *  to warn Play Store users before they grab a (potentially unstable)
