@@ -1,6 +1,7 @@
 package com.charles.livecaptionn.translation
 
 import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Query
 
@@ -18,5 +19,5 @@ interface GoogleWebTranslationApi {
         @Query("sl") source: String,
         @Query("tl") target: String,
         @Query("q") text: String
-    ): ResponseBody
+    ): Response<ResponseBody>
 }
