@@ -171,6 +171,15 @@ class CaptionForegroundService : Service() {
     private fun startFlow() {
         if (!captionSessionActive.compareAndSet(false, true)) return
         failureMessage = null
+        // Lock session-scoped settings immediately, before asynchronous setup.
+        app.container.runtimeStore.update {
+            it.copy(
+                running = true,
+                paused = false,
+                status = RecognitionStatus.PROCESSING,
+                lastError = null
+            )
+        }
         if (!Settings.canDrawOverlays(this)) {
             Log.e("CaptionService", "Overlay permission missing.")
             failAndStop("Overlay permission is required. Enable it in system settings and try again.")
