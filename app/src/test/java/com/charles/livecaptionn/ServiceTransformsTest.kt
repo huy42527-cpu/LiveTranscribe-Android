@@ -244,4 +244,53 @@ class ServiceTransformsTest {
         )
         assertEquals("the gioi", overlayTranscriptText(state))
     }
+
+    @Test
+    fun overlayTranscriptText_hidesSingleSpeakerLabel() {
+        val state = CaptionRuntimeState(
+            speakerCount = 1,
+            transcriptLines = listOf(
+                CaptionRuntimeLine(
+                    id = 1L,
+                    originalText = "hello",
+                    translatedText = "xin chao",
+                    speakerIndex = 0
+                )
+            )
+        )
+        assertEquals("xin chao", overlayTranscriptText(state))
+    }
+
+    @Test
+    fun overlayTranscriptText_retroactivelyShowsLabelsWhenSecondSpeakerExists() {
+        val state = CaptionRuntimeState(
+            speakerCount = 2,
+            transcriptLines = listOf(
+                CaptionRuntimeLine(
+                    id = 1L,
+                    originalText = "hello",
+                    translatedText = "xin chao",
+                    speakerIndex = 0
+                ),
+                CaptionRuntimeLine(
+                    id = 2L,
+                    originalText = "world",
+                    translatedText = "the gioi",
+                    speakerIndex = 1
+                )
+            )
+        )
+        assertEquals("A: xin chao\\nB: the gioi", overlayTranscriptText(state))
+    }
+
+    @Test
+    fun overlayTranscriptText_doesNotInventLabelForUnassignedLine() {
+        val state = CaptionRuntimeState(
+            speakerCount = 2,
+            transcriptLines = listOf(
+                CaptionRuntimeLine(id = 1L, originalText = "hello", translatedText = "xin chao")
+            )
+        )
+        assertEquals("xin chao", overlayTranscriptText(state))
+    }
 }
