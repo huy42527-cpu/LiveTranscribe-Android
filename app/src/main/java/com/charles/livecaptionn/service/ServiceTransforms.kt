@@ -107,9 +107,15 @@ internal fun overlayTranscriptText(
     runtime: CaptionRuntimeState
 ): String {
     val rendered = runtime.transcriptLines
-        .mapNotNull {
-            it.translatedText.trim().takeIf { text ->
-                text.isNotBlank()
+        .mapNotNull { line ->
+            val translated = line.translatedText.trim().takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            val speakerIndex = line.speakerIndex
+            if (runtime.speakerCount >= 2 && speakerIndex != null) {
+                val label = ('A'.code + speakerIndex).toChar()
+                "$label: $translated"
+            } else {
+                translated
             }
         }
 
