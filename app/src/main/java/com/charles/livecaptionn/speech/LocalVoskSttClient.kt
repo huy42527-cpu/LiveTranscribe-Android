@@ -125,6 +125,7 @@ class VoskStreamingSession internal constructor(
      * silence/segment boundary) plus the current text — if `accepted`, [text]
      * is the finalized segment; otherwise it's the latest partial.
      */
+    @Synchronized
     fun feed(pcm: ByteArray, length: Int = pcm.size): FeedResult {
         if (closed) return FeedResult("", accepted = false)
         val accepted = try {
@@ -142,6 +143,7 @@ class VoskStreamingSession internal constructor(
     }
 
     /** Flushes any buffered audio and returns the final remaining text. */
+    @Synchronized
     fun finish(): String {
         if (closed) return ""
         return try {
@@ -152,6 +154,7 @@ class VoskStreamingSession internal constructor(
         }
     }
 
+    @Synchronized
     fun close() {
         if (closed) return
         closed = true
