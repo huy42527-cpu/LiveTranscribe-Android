@@ -214,6 +214,18 @@ class CaptionForegroundService : Service() {
                 }
             }
 
+            val speakerModelDir = if (
+                settings.sttBackend == SttBackend.LOCAL_VOSK &&
+                settings.speakerRecognitionEnabled
+            ) {
+                app.container.voskSpeakerRegistry.resolveModelDir() ?: run {
+                    failAndStop("Speaker model is missing. Turn speaker labels off and enable them again to download it.")
+                    return@launch
+                }
+            } else {
+                null
+            }
+
             app.container.runtimeStore.update {
                 // Clear a reason left over from an earlier failed start.
                 it.copy(running = true, paused = false, status = RecognitionStatus.LISTENING, lastError = null)
@@ -341,7 +353,8 @@ class CaptionForegroundService : Service() {
                     localSttClient = app.container.localVoskClient,
                     scope = serviceScope,
                     onResult = onSpeechResult,
-                    onError = errorSink
+                    onError = errorSink,
+                    speakerModelDir = speakerModelDir
                 )
                 speechEngine = engine
                 observeEngineStatus(engine.status)
