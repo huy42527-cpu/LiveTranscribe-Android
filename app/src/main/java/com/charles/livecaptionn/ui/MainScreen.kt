@@ -740,6 +740,32 @@ private fun AudioSourceCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(t["Speaker labels (experimental)"], style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = when {
+                                ui.runtime.running -> t["Locked until this session ends"]
+                                ui.speakerModelDownloading -> t["Downloading speaker model…"]
+                                ui.speakerModelError != null -> ui.speakerModelError
+                                ui.speakerModelInstalled -> t["Speaker model ready"]
+                                else -> t["Downloads a separate 13 MB model"]
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = ui.settings.speakerRecognitionEnabled,
+                        onCheckedChange = viewModel::updateSpeakerRecognition,
+                        enabled = !ui.runtime.running && !ui.speakerModelDownloading
+                    )
+                }
                 if (!anyLargeInstalled) {
                     Text(
                         text = t["Tip: for noticeably stronger transcription, tap Manage models and install a LARGE server-grade model for the languages you use — 80 MB to 2 GB each, fully offline after download."],
