@@ -41,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -236,7 +237,14 @@ class CaptionForegroundService : Service() {
                     .collect {
                         while (true) {
                             val final = pendingFinalTranslations.poll() ?: break
-                            translateSnapshot(final)
+                            try {
+                                translateSnapshot(final)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                Log.w("CaptionService", "Final translation failed (${error.javaClass.simpleName}).")
+                                finishTranslationWithoutResult(final)
+                            }
                         }
                         val partial = synchronized(this@CaptionForegroundService) {
                             TranslationRequest(
@@ -247,7 +255,16 @@ class CaptionForegroundService : Service() {
                             )
                                 .also { historyOnNextTranslate = false }
                         }
-                        if (partial.text.isNotBlank()) translateSnapshot(partial)
+                        if (partial.text.isNotBlank()) {
+                            try {
+                                translateSnapshot(partial)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                Log.w("CaptionService", "Partial translation failed (${error.javaClass.simpleName}).")
+                                finishTranslationWithoutResult(partial)
+                            }
+                        }
                     }
             }
 
@@ -455,7 +472,11 @@ class CaptionForegroundService : Service() {
             targetCode = captionSettings.targetLanguageCode,
             autoDetect = currentAudioSource == AudioSource.SYSTEM || captionSettings.autoDetectSource
         )
-        if (translated.isBlank()) return
+        if (translated.isBlank()) {
+            Log.w("CaptionService", "Translation returned blank for lineId=${request.lineId}.")
+            finishTranslationWithoutResult(request)
+            return
+        }
 
         val translatedWithGlossary = applyGlossary(translated, app.container.glossary.list())
 
@@ -497,6 +518,24 @@ class CaptionForegroundService : Service() {
                     targetLanguage = captionSettings.targetLanguageCode
                 )
             )
+        }
+    }
+
+    /**
+     * Leave PROCESSING only when this request still belongs to the newest visible
+     * transcript line. Older partial results must not overwrite a newer request's status.
+     */
+    private suspend fun finishTranslationWithoutResult(request: TranslationRequest) {
+        app.container.runtimeStore.update { state ->
+            val isCurrentRequest = state.originalText == request.text &&
+                state.transcriptLines.lastOrNull()?.let { line ->
+                    line.id == request.lineId && line.revision == request.revision
+                } == true
+            if (isCurrentRequest && state.status == RecognitionStatus.PROCESSING) {
+                state.copy(status = if (paused) RecognitionStatus.PAUSED else RecognitionStatus.LISTENING)
+            } else {
+                state
+            }
         }
     }
 
