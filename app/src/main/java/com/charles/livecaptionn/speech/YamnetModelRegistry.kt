@@ -82,7 +82,7 @@ class YamnetModelRegistry(context: Context) {
                 digest.update(buffer, 0, read)
             }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xFF) }
     }
 
     companion object {
