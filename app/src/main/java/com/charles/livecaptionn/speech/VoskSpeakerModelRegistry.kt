@@ -54,6 +54,7 @@ class VoskSpeakerModelRegistry(context: Context) {
                 throw java.io.IOException("Downloaded speaker model is incomplete")
             }
 
+            File(source, ".installed").writeText("ok")
             if (backup.exists()) backup.deleteRecursively()
             if (targetDir.exists() && !targetDir.renameTo(backup)) {
                 throw java.io.IOException("Could not preserve the previous speaker model")
@@ -69,7 +70,6 @@ class VoskSpeakerModelRegistry(context: Context) {
                 throw java.io.IOException("Could not install the speaker model")
             }
 
-            File(targetDir, ".installed").writeText("ok")
             backup.deleteRecursively()
             staging.deleteRecursively()
             zip.delete()
