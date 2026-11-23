@@ -49,7 +49,8 @@ class GoogleWebTranslationRepository : TranslationRepository {
             throw cancelled
         } catch (error: Exception) {
             // Do not log caption text or request URLs: they may contain private speech.
-            Log.w(TAG, "Google Web translation request failed.", error)
+            // Avoid logging the exception: Retrofit/OkHttp messages may contain the full URL and caption query.
+            Log.w(TAG, "Google Web translation request failed (${error.javaClass.simpleName}).")
             ""
         }
     }
