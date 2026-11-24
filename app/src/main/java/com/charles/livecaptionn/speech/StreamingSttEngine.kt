@@ -66,6 +66,7 @@ class StreamingSttEngine(
     private val timedSingingEvidence = ArrayDeque<TimedSingingEvidence>()
     private val pendingSingingSegments = ArrayDeque<PendingSingingSegment>()
     private var nextSegmentId = 0L
+    private var yamnetClassifiedWindows = 0L
     @Volatile private var captureSamplePosition = 0L
     @Volatile private var lastFinalizedSegmentSample = 0L
 
@@ -81,6 +82,7 @@ class StreamingSttEngine(
             timedSingingEvidence.clear()
             pendingSingingSegments.clear()
             nextSegmentId = 0L
+            yamnetClassifiedWindows = 0L
         }
         running = true
         paused = false
@@ -365,7 +367,20 @@ class StreamingSttEngine(
                         pendingSingingSegments.removeFirst()
                     }
                 }
-                val isSinging = hasSingingEvidenceForSegment(segmentStartSample, segmentEndSample)
+                val evidenceSnapshot = synchronized(singingEvidenceLock) { timedSingingEvidence.toList() }
+                val containedEvidence = evidenceSnapshot.filter {
+                    it.startSample >= segmentStartSample && it.endSample <= segmentEndSample
+                }
+                val singingDominantWindows = containedEvidence.count {
+                    it.scores.singing >= 0.55f && it.scores.singing > it.scores.speech + 0.10f
+                }
+                val speechOrAmbiguousWindows = containedEvidence.count {
+                    it.scores.speech >= it.scores.singing - 0.10f
+                }
+                val isSinging = SegmentSingingEvidence.hasConfidentSinging(
+                    segmentStartSample, segmentEndSample, evidenceSnapshot
+                )
+                Log.i(TAG, "segmentEvidence id=$segmentId durationMs=${(segmentEndSample - segmentStartSample) * 1000L / SAMPLE_RATE} containedWindows=${containedEvidence.size} singingDominant=$singingDominantWindows speechOrAmbiguous=$speechOrAmbiguousWindows cs=$isSinging")
                 if (isSinging) {
                     synchronized(singingEvidenceLock) { pending.singingReported = true }
                 }
@@ -412,6 +427,7 @@ class StreamingSttEngine(
                 Log.w(TAG, "YAMNet unavailable; continuing Vosk without singing labels", t)
                 return@launch
             }
+            Log.i(TAG, "YAMNet worker started; classifier ready")
             try {
                 for (window in sessionWindows) {
                     val scores = try {
@@ -421,6 +437,10 @@ class StreamingSttEngine(
                         continue
                     }
                     synchronized(singingEvidenceLock) {
+                        yamnetClassifiedWindows += 1
+                        if (yamnetClassifiedWindows % 5L == 0L) {
+                            Log.d(TAG, "yamnet windows=$yamnetClassifiedWindows speech=${scores.speech} singing=${scores.singing}")
+                        }
                         timedSingingEvidence.addLast(
                             TimedSingingEvidence(
                                 startSample = window.startSample,
