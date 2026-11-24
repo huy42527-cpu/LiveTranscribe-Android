@@ -225,14 +225,17 @@ class CaptionForegroundService : Service() {
                 }
             }
 
+            // Auxiliary models are optional: a missing or unavailable model must
+            // disable only its own enhancement, never the core Vosk caption session.
+            // Resolve them independently so one feature can still work if the other
+            // model is absent or fails to load.
             val speakerModelDir = if (
                 settings.sttBackend == SttBackend.LOCAL_VOSK &&
                 settings.speakerRecognitionEnabled
             ) {
-                app.container.voskSpeakerRegistry.resolveModelDir() ?: run {
-                    failAndStop("Speaker model is missing. Turn speaker labels off and enable them again to download it.")
-                    return@launch
-                }
+                runCatching { app.container.voskSpeakerRegistry.resolveModelDir() }
+                    .onFailure { Log.w("CaptionService", "Speaker model unavailable; continuing without speaker labels", it) }
+                    .getOrNull()
             } else {
                 null
             }
@@ -241,10 +244,9 @@ class CaptionForegroundService : Service() {
                 settings.sttBackend == SttBackend.LOCAL_VOSK &&
                 settings.speakerRecognitionEnabled
             ) {
-                app.container.yamnetRegistry.modelFile() ?: run {
-                    failAndStop("Singing model is missing. Turn voice labels off and enable them again to download it.")
-                    return@launch
-                }
+                runCatching { app.container.yamnetRegistry.modelFile() }
+                    .onFailure { Log.w("CaptionService", "Singing model unavailable; continuing without CS labels", it) }
+                    .getOrNull()
             } else {
                 null
             }
