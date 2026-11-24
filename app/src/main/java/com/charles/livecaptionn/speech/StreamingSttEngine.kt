@@ -242,7 +242,9 @@ class StreamingSttEngine(
         onError(null)
 
         startYamnetWorker()
-        captureJob = scope.launch(Dispatchers.Default) { captureLoop(record) }
+        // AudioRecord must be drained promptly; keep its blocking read loop off the
+        // CPU-bound Default dispatcher shared with YAMNet inference.
+        captureJob = scope.launch(Dispatchers.IO) { captureLoop(record) }
     }
 
     private suspend fun captureLoop(record: AudioRecord) {
@@ -532,7 +534,7 @@ class StreamingSttEngine(
             SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT
-        ).coerceAtLeast(CHUNK_BYTES * 8)
+        ).coerceAtLeast(CHUNK_BYTES * 16)
 
         return when (audioSource) {
             AudioSource.SYSTEM -> {
