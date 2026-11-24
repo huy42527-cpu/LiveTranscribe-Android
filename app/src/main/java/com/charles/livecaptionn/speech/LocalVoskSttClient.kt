@@ -27,12 +27,6 @@ import java.io.File
  * to prevent races between concurrent openSession/transcribe calls.
  */
 class LocalVoskSttClient(private val registry: VoskModelRegistry) {
-    private companion object {
-        const val SPEAKER_INITIAL_SILENCE_SECONDS = 5.0f
-        const val SPEAKER_TRAILING_SILENCE_SECONDS = 0.35f
-        const val SPEAKER_MIN_UTTERANCE_SECONDS = 20.0f
-    }
-
     private var cachedLanguageCode: String? = null
     private var cachedModel: Model? = null
     private val modelMutex = Mutex()
@@ -128,6 +122,10 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
     }
 
     companion object {
+        const val SPEAKER_INITIAL_SILENCE_SECONDS = 5.0f
+        const val SPEAKER_TRAILING_SILENCE_SECONDS = 0.35f
+        const val SPEAKER_MIN_UTTERANCE_SECONDS = 20.0f
+
         internal fun extractText(resultJson: String): String {
             return try {
                 val json = JSONObject(resultJson)
