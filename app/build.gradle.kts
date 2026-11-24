@@ -48,6 +48,13 @@ val appVersionCode: Int = System.getenv("ANDROID_VERSION_CODE")?.toIntOrNull() ?
 val appVersionName: String = System.getenv("ANDROID_VERSION_NAME")
     ?: "1.0.$appVersionCode"
 
+// Optional ABI restriction for device-specific CI artifacts. No property means the
+// existing universal APK remains unchanged.
+val targetAbi: String? = providers.gradleProperty("targetAbi").orNull?.trim()?.takeIf { it.isNotEmpty() }
+require(targetAbi == null || targetAbi == "arm64-v8a") {
+    "Unsupported targetAbi: $targetAbi (only arm64-v8a is currently supported)"
+}
+
 android {
     namespace = "com.charles.livecaptionn"
     compileSdk = 36
@@ -56,6 +63,11 @@ android {
         applicationId = "com.charles.livecaptionn"
         minSdk = 28
         targetSdk = 36
+        targetAbi?.let { abi ->
+            ndk {
+                abiFilters += abi
+            }
+        }
         versionCode = appVersionCode
         versionName = appVersionName
 
