@@ -71,6 +71,36 @@ class SegmentSingingEvidenceTest {
         )
     }
 
+    @Test fun streamerSpeechInsideSameVoskSegmentPreventsCsEvenIfSongAppearsLater() {
+        val history = listOf(
+            window(0, 15_600, 0.9f, 0.2f),
+            window(7_680, 23_280, 0.1f, 0.9f),
+            window(15_360, 30_960, 0.1f, 0.9f)
+        )
+        assertFalse(
+            SegmentSingingEvidence.hasConfidentSinging(
+                segmentStartSample = 0,
+                segmentEndSample = 32_000,
+                windows = history
+            )
+        )
+    }
+
+    @Test fun quietBackgroundMusicDuringStreamerSpeechDoesNotGetCs() {
+        val history = listOf(
+            window(0, 15_600, 0.85f, 0.25f),
+            window(7_680, 23_280, 0.8f, 0.3f),
+            window(15_360, 30_960, 0.9f, 0.2f)
+        )
+        assertFalse(
+            SegmentSingingEvidence.hasConfidentSinging(
+                segmentStartSample = 0,
+                segmentEndSample = 32_000,
+                windows = history
+            )
+        )
+    }
+
     @Test fun partiallyOverlappingWindowIsExcluded() {
         val history = listOf(
             window(0, 15_600, 0.1f, 0.9f),
