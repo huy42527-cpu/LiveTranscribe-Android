@@ -121,6 +121,15 @@ class StreamingSttEngine(
         statusMutable.value = RecognitionStatus.IDLE
     }
 
+    private fun closeSessionIfCurrent(localSession: VoskStreamingSession) {
+        synchronized(sessionLock) {
+            if (session === localSession) {
+                session = null
+                localSession.close()
+            }
+        }
+    }
+
     override fun pause() {
         paused = true
         statusMutable.value = RecognitionStatus.PAUSED
@@ -149,11 +158,17 @@ class StreamingSttEngine(
         }
         // A stop can arrive while the model is loading. Do not create audio
         // resources for a session that has already been cancelled.
-        if (!running) {
+        val attached = synchronized(sessionLock) {
+            if (!running) false
+            else {
+                session = localSession
+                true
+            }
+        }
+        if (!attached) {
             localSession.close()
             return
         }
-        session = localSession
 
         val record = try {
             buildAudioRecord()
@@ -161,15 +176,14 @@ class StreamingSttEngine(
             Log.e(TAG, "buildAudioRecord failed", t)
             onError("Audio capture failed: ${t.message ?: t::class.java.simpleName}")
             statusMutable.value = RecognitionStatus.ERROR
-            session?.close(); session = null
+            closeSessionIfCurrent(localSession)
             running = false
             return
         }
 
         if (!running) {
             record?.release()
-            localSession.close()
-            if (session === localSession) session = null
+            closeSessionIfCurrent(localSession)
             return
         }
 
@@ -182,7 +196,7 @@ class StreamingSttEngine(
             )
             statusMutable.value = RecognitionStatus.ERROR
             record?.release()
-            session?.close(); session = null
+            closeSessionIfCurrent(localSession)
             running = false
             return
         }
