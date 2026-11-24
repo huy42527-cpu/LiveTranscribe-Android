@@ -204,8 +204,7 @@ class StreamingSttEngine(
         if (!running) {
             record.release()
             if (audioRecord === record) audioRecord = null
-            localSession.close()
-            if (session === localSession) session = null
+            closeSessionIfCurrent(localSession)
             return
         }
 
@@ -217,7 +216,7 @@ class StreamingSttEngine(
             statusMutable.value = RecognitionStatus.ERROR
             record.release()
             audioRecord = null
-            session?.close(); session = null
+            closeSessionIfCurrent(localSession)
             running = false
             return
         }
@@ -227,7 +226,7 @@ class StreamingSttEngine(
             statusMutable.value = RecognitionStatus.ERROR
             record.release()
             audioRecord = null
-            session?.close(); session = null
+            closeSessionIfCurrent(localSession)
             running = false
             return
         }
@@ -236,8 +235,7 @@ class StreamingSttEngine(
             try { record.stop() } catch (_: Throwable) {}
             record.release()
             if (audioRecord === record) audioRecord = null
-            localSession.close()
-            if (session === localSession) session = null
+            closeSessionIfCurrent(localSession)
             return
         }
 
