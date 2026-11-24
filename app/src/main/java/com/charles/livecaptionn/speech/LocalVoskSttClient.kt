@@ -52,8 +52,9 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
                 if (speakerModel != null) {
                     // Shorter trailing-silence endpointing gives Vosk more
                     // speaker-homogeneous utterances when turns have pauses.
-                    // The third delay is the forced-endpoint timeout, not a minimum
-                    // duration. It caps exceptionally long continuous utterances.
+                    // The third delay caps a continuous utterance at 8 s.
+                    // This limits multi-turn averaging while leaving enough audio
+                    // for Vosk x-vectors (short segments can still be unassigned).
                     // Audio feeding remains continuous; this changes only
                     // where Vosk finalizes a segment.
                     setEndpointerDelays(
@@ -125,8 +126,8 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
 
     companion object {
         const val SPEAKER_INITIAL_SILENCE_SECONDS = 5.0f
-        const val SPEAKER_TRAILING_SILENCE_SECONDS = 0.35f
-        const val SPEAKER_FORCED_ENDPOINT_SECONDS = 20.0f
+        const val SPEAKER_TRAILING_SILENCE_SECONDS = 0.5f
+        const val SPEAKER_FORCED_ENDPOINT_SECONDS = 8.0f
 
         internal fun extractText(resultJson: String): String {
             return try {
