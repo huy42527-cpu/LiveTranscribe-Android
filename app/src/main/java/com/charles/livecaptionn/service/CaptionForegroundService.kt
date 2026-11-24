@@ -71,6 +71,8 @@ class CaptionForegroundService : Service() {
     private var failureMessage: String? = null
     private var bufferedText = ""
     private val lineIdCounter = java.util.concurrent.atomic.AtomicLong(0)
+    private val captionGeneration = java.util.concurrent.atomic.AtomicLong(0)
+    private val singingSegmentLineIds = java.util.concurrent.ConcurrentHashMap<Long, Long>()
     @Volatile
     private var bufferedLineId: Long = NO_LINE_ID
     @Volatile
@@ -170,6 +172,8 @@ class CaptionForegroundService : Service() {
 
     private fun startFlow() {
         if (!captionSessionActive.compareAndSet(false, true)) return
+        val sessionGeneration = captionGeneration.incrementAndGet()
+        singingSegmentLineIds.clear()
         failureMessage = null
         // Lock session-scoped settings immediately, before asynchronous setup.
         app.container.runtimeStore.update {
@@ -347,6 +351,13 @@ class CaptionForegroundService : Service() {
 
                 if (transcript.isNotBlank() && actualLine != null) {
                     if (result.isFinal) {
+                        result.segmentId?.let { segmentId ->
+                            singingSegmentLineIds[segmentId] = actualLine.id
+                            while (singingSegmentLineIds.size > MAX_PENDING_SINGING_LINES) {
+                                val oldest = singingSegmentLineIds.keys.minOrNull() ?: break
+                                singingSegmentLineIds.remove(oldest)
+                            }
+                        }
                         val clusterer = speakerClusterer
                         val embedding = result.speakerEmbedding
                         if (clusterer != null && embedding != null && !result.isSinging) {
@@ -420,6 +431,23 @@ class CaptionForegroundService : Service() {
                     scope = serviceScope,
                     onResult = onSpeechResult,
                     onError = errorSink,
+                    onSingingUpdate = { segmentId ->
+                        if (captionGeneration.get() == sessionGeneration &&
+                            captionSessionActive.get()
+                        ) {
+                            singingSegmentLineIds.remove(segmentId)?.let { lineId ->
+                                app.container.runtimeStore.update { state ->
+                                    state.copy(
+                                        transcriptLines = state.transcriptLines.map { line ->
+                                            if (line.id == lineId && line.isFinal) {
+                                                line.copy(isSungLyrics = true)
+                                            } else line
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    },
                     speakerModelDir = speakerModelDir,
                     yamnetModelFile = yamnetModelFile
                 )
@@ -667,6 +695,8 @@ class CaptionForegroundService : Service() {
 
     private fun stopFlow() {
         captionSessionActive.set(false)
+        captionGeneration.incrementAndGet()
+        singingSegmentLineIds.clear()
         speakerClusterer?.reset()
         speakerClusterer = null
         try { speechEngine?.stop() } catch (_: Throwable) {}
@@ -689,6 +719,8 @@ class CaptionForegroundService : Service() {
 
     private fun failAndStop(message: String) {
         captionSessionActive.set(false)
+        captionGeneration.incrementAndGet()
+        singingSegmentLineIds.clear()
         failureMessage = message
         try { speechEngine?.stop() } catch (_: Throwable) {}
         speechEngine = null
@@ -762,5 +794,6 @@ class CaptionForegroundService : Service() {
         private const val NOTIF_ID = 2001
         private const val TRANSLATE_DEBOUNCE_MS = 450L
         private const val NO_LINE_ID = -1L
+        private const val MAX_PENDING_SINGING_LINES = 64
     }
 }
