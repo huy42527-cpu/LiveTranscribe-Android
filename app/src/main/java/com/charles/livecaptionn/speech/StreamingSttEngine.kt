@@ -92,10 +92,6 @@ class StreamingSttEngine(
         paused = false
         // The final Vosk flush belongs only to audio since the last accepted
         // segment boundary. Never reuse a global "recent singing" flag here.
-        val finalSingingEvidence = hasSingingEvidenceForSegment(
-            lastFinalizedSegmentSample,
-            lastFedSamplePosition
-        )
         val activeCaptureJob = captureJob
         captureJob = null
         try { audioRecord?.stop() } catch (_: Throwable) {}
@@ -106,6 +102,12 @@ class StreamingSttEngine(
         try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
         synchronized(sessionLock) {
+            // Wait until any in-flight feed() has completed and advanced
+            // lastFedSamplePosition before deciding the final segment label.
+            val finalSingingEvidence = hasSingingEvidenceForSegment(
+                lastFinalizedSegmentSample,
+                lastFedSamplePosition
+            )
             session?.finish()?.let { finalResult ->
                 if (finalResult.text.isNotBlank()) {
                     onResult(
