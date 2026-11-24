@@ -64,7 +64,6 @@ class StreamingSttEngine(
     private val singingEvidenceLock = Any()
     private val timedSingingEvidence = ArrayDeque<TimedSingingEvidence>()
     @Volatile private var captureSamplePosition = 0L
-    @Volatile private var lastFedSamplePosition = 0L
     @Volatile private var lastFinalizedSegmentSample = 0L
 
     @Volatile private var running = false
@@ -74,7 +73,6 @@ class StreamingSttEngine(
         if (running) return
         yamnetWindows = newYamnetChannel()
         captureSamplePosition = 0L
-        lastFedSamplePosition = 0L
         lastFinalizedSegmentSample = 0L
         synchronized(singingEvidenceLock) { timedSingingEvidence.clear() }
         running = true
@@ -90,8 +88,6 @@ class StreamingSttEngine(
     override fun stop() {
         running = false
         paused = false
-        // The final Vosk flush belongs only to audio since the last accepted
-        // segment boundary. Never reuse a global "recent singing" flag here.
         val activeCaptureJob = captureJob
         captureJob = null
         try { audioRecord?.stop() } catch (_: Throwable) {}
@@ -102,25 +98,10 @@ class StreamingSttEngine(
         try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
         synchronized(sessionLock) {
-            // Wait until any in-flight feed() has completed and advanced
-            // lastFedSamplePosition before deciding the final segment label.
-            val finalSingingEvidence = hasSingingEvidenceForSegment(
-                lastFinalizedSegmentSample,
-                lastFedSamplePosition
-            )
-            session?.finish()?.let { finalResult ->
-                if (finalResult.text.isNotBlank()) {
-                    onResult(
-                        SpeechResult(
-                            finalResult.text,
-                            isFinal = true,
-                            speakerEmbedding = finalResult.speakerEmbedding,
-                            speakerFrames = finalResult.speakerFrames,
-                            isSinging = finalSingingEvidence
-                        )
-                    )
-                }
-            }
+            // Stop policy clears the transcript immediately, so flushing and
+            // publishing a final Vosk result here would only create work that
+            // is discarded by CaptionForegroundService.stopFlow(). Close the
+            // native session directly instead.
             session?.close()
             session = null
         }
@@ -355,9 +336,6 @@ class StreamingSttEngine(
                 if (!running || session !== localSession) null
                 else {
                     localSession.feed(buffer, read).also {
-                        // Only audio actually submitted to Vosk may define the
-                        // final-flush interval if stop races with AudioRecord.read.
-                        lastFedSamplePosition = captureSampleCursor
                     }
                 }
             } ?: break
