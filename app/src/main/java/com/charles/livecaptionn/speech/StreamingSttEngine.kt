@@ -64,6 +64,7 @@ class StreamingSttEngine(
     private val singingEvidenceLock = Any()
     private val timedSingingEvidence = ArrayDeque<TimedSingingEvidence>()
     @Volatile private var captureSamplePosition = 0L
+    @Volatile private var lastFedSamplePosition = 0L
     @Volatile private var lastFinalizedSegmentSample = 0L
 
     @Volatile private var running = false
@@ -73,6 +74,7 @@ class StreamingSttEngine(
         if (running) return
         yamnetWindows = newYamnetChannel()
         captureSamplePosition = 0L
+        lastFedSamplePosition = 0L
         lastFinalizedSegmentSample = 0L
         synchronized(singingEvidenceLock) { timedSingingEvidence.clear() }
         running = true
@@ -92,7 +94,7 @@ class StreamingSttEngine(
         // segment boundary. Never reuse a global "recent singing" flag here.
         val finalSingingEvidence = hasSingingEvidenceForSegment(
             lastFinalizedSegmentSample,
-            captureSamplePosition
+            lastFedSamplePosition
         )
         val activeCaptureJob = captureJob
         captureJob = null
@@ -349,7 +351,13 @@ class StreamingSttEngine(
             val localSession = session ?: break
             val result = synchronized(sessionLock) {
                 if (!running || session !== localSession) null
-                else localSession.feed(buffer, read)
+                else {
+                    localSession.feed(buffer, read).also {
+                        // Only audio actually submitted to Vosk may define the
+                        // final-flush interval if stop races with AudioRecord.read.
+                        lastFedSamplePosition = captureSampleCursor
+                    }
+                }
             } ?: break
 
             if (!running) break
