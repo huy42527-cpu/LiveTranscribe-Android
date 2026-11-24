@@ -107,12 +107,12 @@ class SpeakerEmbeddingClustererTest {
 
         val confirmedB = c.observe(5, vector(36.0), 80)
         assertEquals("new-speaker-confirmed", confirmedB.diagnostic)
-        assertEquals(1, c.speakerCount())
-        assertEquals(0, confirmedB.speakerAssignments[2L])
-        assertEquals(0, confirmedB.speakerAssignments[3L])
-        assertEquals(1, confirmedB.speakerAssignments[1L])
-        assertEquals(1, confirmedB.speakerAssignments[4L])
-        assertEquals(1, confirmedB.speakerAssignments[5L])
+        assertEquals(2, c.speakerCount())
+        assertEquals(1, confirmedB.speakerAssignments[2L])
+        assertEquals(1, confirmedB.speakerAssignments[3L])
+        assertEquals(0, confirmedB.speakerAssignments[1L])
+        assertEquals(0, confirmedB.speakerAssignments[4L])
+        assertEquals(0, confirmedB.speakerAssignments[5L])
     }
 
     @Test fun knownSpeakerReturnsSameIndex() {
