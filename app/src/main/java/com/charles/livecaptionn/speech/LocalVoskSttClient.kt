@@ -52,9 +52,9 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
                 if (speakerModel != null) {
                     // Shorter trailing-silence endpointing gives Vosk more
                     // speaker-homogeneous utterances when turns have pauses.
-                    // The third delay caps a continuous utterance at 4.5 s.
-                    // This limits multi-turn averaging while leaving enough audio
-                    // for Vosk x-vectors (short segments can still be unassigned).
+                    // The third delay configures Vosk's forced-endpoint rule;
+                    // it is not a hard maximum segment duration. Keep x-vector
+                    // quality in mind: short segments can still be unassigned.
                     // Audio feeding remains continuous; this changes only
                     // where Vosk finalizes a segment.
                     setEndpointerDelays(
