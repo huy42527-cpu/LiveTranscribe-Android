@@ -28,6 +28,7 @@ internal class SpeakerEmbeddingClusterer(
 
     private data class Profile(
         var index: Int,
+        val firstSegmentId: Long,
         var centroid: FloatArray,
         var observations: Int = 1,
         val segmentIds: MutableSet<Long> = linkedSetOf()
@@ -36,7 +37,8 @@ internal class SpeakerEmbeddingClusterer(
     private data class Candidate(
         var centroid: FloatArray,
         var observations: Int,
-        val segmentIds: MutableList<Long>
+        val segmentIds: MutableList<Long>,
+        var lastObservedAtMs: Long
     )
 
     private val profiles = mutableListOf<Profile>()
@@ -51,7 +53,13 @@ internal class SpeakerEmbeddingClusterer(
     }
 
     @Synchronized
-    fun observe(segmentId: Long, embedding: FloatArray, frameCount: Int): Decision {
+    fun observe(
+        segmentId: Long,
+        embedding: FloatArray,
+        frameCount: Int,
+        nowMs: Long = System.nanoTime() / 1_000_000L
+    ): Decision {
+        expireCandidates(nowMs)
         if (frameCount < minFrames) return Decision(ignored = true)
         val normalized = normalize(embedding) ?: return Decision(ignored = true)
 
@@ -68,6 +76,7 @@ internal class SpeakerEmbeddingClusterer(
             }
             updateCentroid(best.first, normalized)
             best.first.segmentIds += segmentId
+            trimProfileSegments(best.first)
             return Decision(
                 speakerIndex = best.first.index,
                 speakerAssignments = currentAssignments()
@@ -86,7 +95,7 @@ internal class SpeakerEmbeddingClusterer(
             ?.first
 
         if (candidate == null) {
-            candidates += Candidate(normalized, 1, mutableListOf(segmentId))
+            candidates += Candidate(normalized, 1, mutableListOf(segmentId), nowMs)
             trimCandidates()
             return Decision()
         }
@@ -97,6 +106,7 @@ internal class SpeakerEmbeddingClusterer(
 
         updateCandidate(candidate, normalized)
         candidate.observations += 1
+        candidate.lastObservedAtMs = nowMs
         if (candidate.segmentIds.size < confirmationSegments) {
             candidate.segmentIds += segmentId
         }
@@ -109,6 +119,7 @@ internal class SpeakerEmbeddingClusterer(
 
         val profile = Profile(
             index = profiles.size,
+            firstSegmentId = candidate.segmentIds.minOrNull() ?: segmentId,
             centroid = candidate.centroid,
             observations = candidate.observations,
             segmentIds = candidate.segmentIds.toMutableSet()
@@ -120,7 +131,7 @@ internal class SpeakerEmbeddingClusterer(
         // having appeared earlier. Reorder all profiles by their earliest
         // observed segment, then return assignments so the service can
         // retroactively correct labels already present in the transcript.
-        profiles.sortBy { it.segmentIds.minOrNull() ?: Long.MAX_VALUE }
+        profiles.sortBy { it.firstSegmentId }
         profiles.forEachIndexed { index, item -> item.index = index }
 
         return Decision(
@@ -139,13 +150,33 @@ internal class SpeakerEmbeddingClusterer(
     @Synchronized
     fun speakerCount(): Int = profiles.size
 
+    private fun expireCandidates(nowMs: Long) {
+        candidates.removeAll { candidate ->
+            nowMs < candidate.lastObservedAtMs ||
+                nowMs - candidate.lastObservedAtMs > CANDIDATE_TTL_MS
+        }
+    }
+
+    private fun trimProfileSegments(profile: Profile) {
+        while (profile.segmentIds.size > MAX_RETAINED_SEGMENTS) {
+            val oldest = profile.segmentIds.minOrNull() ?: break
+            profile.segmentIds.remove(oldest)
+        }
+    }
+
     private fun currentAssignments(): Map<Long, Int> =
         profiles.flatMap { profile ->
             profile.segmentIds.map { segmentId -> segmentId to profile.index }
         }.toMap()
 
     private fun trimCandidates() {
-        while (candidates.size > 8) candidates.removeAt(0)
+        while (candidates.size > MAX_CANDIDATES) candidates.removeAt(0)
+    }
+
+    private companion object {
+        const val CANDIDATE_TTL_MS = 30_000L
+        const val MAX_CANDIDATES = 8
+        const val MAX_RETAINED_SEGMENTS = 30
     }
 
     private fun updateCentroid(profile: Profile, vector: FloatArray) {
