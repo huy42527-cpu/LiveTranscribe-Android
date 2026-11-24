@@ -87,6 +87,34 @@ class SpeakerEmbeddingClustererTest {
         assertEquals(listOf(20L, 21L, 22L), confirmed.confirmedSegmentIds)
     }
 
+    @Test fun closerPendingCandidateWinsOverSimilarConfirmedProfile() {
+        val c = clusterer(threshold = 0.8f, margin = 0.1f)
+        fun vector(degrees: Double): FloatArray {
+            val radians = Math.toRadians(degrees)
+            return floatArrayOf(kotlin.math.cos(radians).toFloat(), kotlin.math.sin(radians).toFloat())
+        }
+
+        // B is first seen, then A is confirmed. B's later vectors also pass
+        // the profile threshold, but are substantially closer to B's candidate.
+        assertNull(c.observe(1, vector(40.0), 80).speakerIndex)
+        assertNull(c.observe(2, vector(0.0), 80).speakerIndex)
+        assertEquals(0, c.observe(3, vector(1.0), 80).speakerIndex)
+        assertEquals(1, c.speakerCount())
+
+        val pendingB = c.observe(4, vector(35.0), 80)
+        assertNull(pendingB.speakerIndex)
+        assertEquals("candidate-awaiting-confirmation", pendingB.diagnostic)
+
+        val confirmedB = c.observe(5, vector(36.0), 80)
+        assertEquals("new-speaker-confirmed", confirmedB.diagnostic)
+        assertEquals(1, c.speakerCount())
+        assertEquals(0, confirmedB.speakerAssignments[2L])
+        assertEquals(0, confirmedB.speakerAssignments[3L])
+        assertEquals(1, confirmedB.speakerAssignments[1L])
+        assertEquals(1, confirmedB.speakerAssignments[4L])
+        assertEquals(1, confirmedB.speakerAssignments[5L])
+    }
+
     @Test fun knownSpeakerReturnsSameIndex() {
         val c = clusterer()
         c.observe(1, floatArrayOf(1f, 0f), 80)
