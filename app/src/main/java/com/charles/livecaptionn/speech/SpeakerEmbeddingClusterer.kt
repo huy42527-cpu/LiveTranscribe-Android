@@ -23,7 +23,9 @@ internal class SpeakerEmbeddingClusterer(
         val confirmedSegmentIds: List<Long> = emptyList(),
         /** Current speaker assignment for every segment retained by confirmed profiles. */
         val speakerAssignments: Map<Long, Int> = emptyMap(),
-        val ignored: Boolean = false
+        val ignored: Boolean = false,
+        /** Machine-readable reason for the latest assignment decision; useful for diagnostics. */
+        val diagnostic: String = "unassigned"
     )
 
     private data class Profile(
@@ -60,8 +62,8 @@ internal class SpeakerEmbeddingClusterer(
         nowMs: Long = System.nanoTime() / 1_000_000L
     ): Decision {
         expireCandidates(nowMs)
-        if (frameCount < minFrames) return Decision(ignored = true)
-        val normalized = normalize(embedding) ?: return Decision(ignored = true)
+        if (frameCount < minFrames) return Decision(ignored = true, diagnostic = "insufficient-frames")
+        val normalized = normalize(embedding) ?: return Decision(ignored = true, diagnostic = "invalid-embedding")
 
         val matchingProfiles = profiles
             .filter { it.centroid.size == normalized.size }
@@ -72,20 +74,21 @@ internal class SpeakerEmbeddingClusterer(
         val secondScore = matchingProfiles.getOrNull(1)?.second
         if (best != null && best.second >= matchThreshold) {
             if (secondScore != null && best.second - secondScore < minMatchMargin) {
-                return Decision()
+                return Decision(diagnostic = "ambiguous-profile-match")
             }
             updateCentroid(best.first, normalized)
             best.first.segmentIds += segmentId
             trimProfileSegments(best.first)
             return Decision(
                 speakerIndex = best.first.index,
-                speakerAssignments = currentAssignments()
+                speakerAssignments = currentAssignments(),
+                diagnostic = "matched-existing-speaker"
             )
         }
 
         // If the vector is dimensionally incompatible with existing profiles,
         // it cannot safely create a profile in this session.
-        if (profiles.any { it.centroid.size != normalized.size }) return Decision()
+        if (profiles.any { it.centroid.size != normalized.size }) return Decision(diagnostic = "embedding-dimension-mismatch")
 
         val candidate = candidates
             .filter { it.centroid.size == normalized.size }
@@ -97,12 +100,12 @@ internal class SpeakerEmbeddingClusterer(
         if (candidate == null) {
             candidates += Candidate(normalized, 1, mutableListOf(segmentId), nowMs)
             trimCandidates()
-            return Decision()
+            return Decision(diagnostic = "new-candidate-pending")
         }
 
         // A repeated callback/revision for the same Vosk segment is not
         // independent evidence and must never confirm a new speaker.
-        if (segmentId in candidate.segmentIds) return Decision()
+        if (segmentId in candidate.segmentIds) return Decision(diagnostic = "duplicate-segment")
 
         updateCandidate(candidate, normalized)
         candidate.observations += 1
@@ -111,10 +114,10 @@ internal class SpeakerEmbeddingClusterer(
             candidate.segmentIds += segmentId
         }
 
-        if (candidate.observations < confirmationSegments) return Decision()
+        if (candidate.observations < confirmationSegments) return Decision(diagnostic = "candidate-awaiting-confirmation")
         if (profiles.size >= maxSpeakers) {
             candidates.remove(candidate)
-            return Decision()
+            return Decision(diagnostic = "maximum-speakers-reached")
         }
 
         val profile = Profile(
@@ -137,7 +140,8 @@ internal class SpeakerEmbeddingClusterer(
         return Decision(
             speakerIndex = profile.index,
             confirmedSegmentIds = candidate.segmentIds.toList(),
-            speakerAssignments = currentAssignments()
+            speakerAssignments = currentAssignments(),
+            diagnostic = "new-speaker-confirmed"
         )
     }
 
