@@ -75,33 +75,10 @@ internal class SpeakerEmbeddingClusterer(
         val best = matchingProfiles.getOrNull(0)
         val secondScore = matchingProfiles.getOrNull(1)?.second
         val profileScores = matchingProfiles.take(3).joinToString(",") { it.second.toString() }
-        if (best != null && best.second >= matchThreshold) {
-            if (secondScore != null && best.second - secondScore < minMatchMargin) {
-                return Decision(
-                    diagnostic = "ambiguous-profile-match",
-                    similaritySummary = "profiles=[$profileScores]"
-                )
-            }
-            updateCentroid(best.first, normalized)
-            best.first.segmentIds += segmentId
-            trimProfileSegments(best.first)
-            return Decision(
-                speakerIndex = best.first.index,
-                speakerAssignments = currentAssignments(),
-                diagnostic = "matched-existing-speaker",
-                similaritySummary = "profiles=[$profileScores]"
-            )
-        }
 
-        // If the vector is dimensionally incompatible with existing profiles,
-        // it cannot safely create a profile in this session.
-        if (profiles.any { it.centroid.size != normalized.size }) {
-            return Decision(
-                diagnostic = "embedding-dimension-mismatch",
-                similaritySummary = "profiles=[$profileScores];candidate=not-evaluated"
-            )
-        }
-
+        // Evaluate pending candidates even when a confirmed profile also matches.
+        // Otherwise a new speaker that resembles an existing profile can never
+        // accumulate the independent observations needed for confirmation.
         val matchingCandidates = candidates
             .filter { it.centroid.size == normalized.size }
             .map { it to cosine(it.centroid, normalized) }
@@ -110,7 +87,63 @@ internal class SpeakerEmbeddingClusterer(
         val candidate = matchingCandidates.firstOrNull()
             ?.takeIf { it.second >= matchThreshold }
             ?.first
+        val bestCandidateScore = matchingCandidates.firstOrNull()?.second
+        val profileMatches = best != null && best.second >= matchThreshold
+        val candidateMatches = candidate != null && bestCandidateScore != null
         val similaritySummary = "profiles=[$profileScores];candidates=[$candidateScores]"
+
+        if (profileMatches && candidateMatches) {
+            val difference = best!!.second - bestCandidateScore!!
+            if (kotlin.math.abs(difference) < minMatchMargin) {
+                return Decision(
+                    diagnostic = "ambiguous-profile-candidate-match",
+                    similaritySummary = similaritySummary
+                )
+            }
+            if (difference > 0f) {
+                if (secondScore != null && best.second - secondScore < minMatchMargin) {
+                    return Decision(
+                        diagnostic = "ambiguous-profile-match",
+                        similaritySummary = similaritySummary
+                    )
+                }
+                updateCentroid(best.first, normalized)
+                best.first.segmentIds += segmentId
+                trimProfileSegments(best.first)
+                return Decision(
+                    speakerIndex = best.first.index,
+                    speakerAssignments = currentAssignments(),
+                    diagnostic = "matched-existing-speaker",
+                    similaritySummary = similaritySummary
+                )
+            }
+            // Candidate is a materially better match; let it collect evidence.
+        } else if (profileMatches) {
+            if (secondScore != null && best!!.second - secondScore < minMatchMargin) {
+                return Decision(
+                    diagnostic = "ambiguous-profile-match",
+                    similaritySummary = similaritySummary
+                )
+            }
+            updateCentroid(best!!.first, normalized)
+            best.first.segmentIds += segmentId
+            trimProfileSegments(best.first)
+            return Decision(
+                speakerIndex = best.first.index,
+                speakerAssignments = currentAssignments(),
+                diagnostic = "matched-existing-speaker",
+                similaritySummary = similaritySummary
+            )
+        }
+
+        // If the vector is dimensionally incompatible with existing profiles,
+        // it cannot safely create a profile in this session.
+        if (profiles.any { it.centroid.size != normalized.size }) {
+            return Decision(
+                diagnostic = "embedding-dimension-mismatch",
+                similaritySummary = "$similaritySummary;candidate=not-evaluated"
+            )
+        }
 
         if (candidate == null) {
             candidates += Candidate(normalized, 1, mutableListOf(segmentId), nowMs)
