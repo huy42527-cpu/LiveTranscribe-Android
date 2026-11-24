@@ -96,11 +96,21 @@ internal object SegmentSingingEvidence {
         val contained = windows.filter {
             it.startSample >= segmentStartSample && it.endSample <= segmentEndSample
         }
-        val confident = contained.filter {
+        // A Vosk segment can contain both streamer speech and a later music-only
+        // pause. Do not label that whole line as singing just because two later
+        // windows are singer-dominant. Any speech-dominant/ambiguous window makes
+        // the segment ineligible for CS. This gate affects labels only; Vosk
+        // transcription and translation continue independently.
+        val containsStreamerSpeechEvidence = contained.any {
+            it.scores.speech >= it.scores.singing - SPEECH_DOMINANCE_MARGIN
+        }
+        if (containsStreamerSpeechEvidence) return false
+
+        val confident = contained.count {
             it.scores.singing >= SINGING_THRESHOLD &&
                 it.scores.singing > it.scores.speech + SPEECH_DOMINANCE_MARGIN
         }
-        return confident.size >= REQUIRED_WINDOWS
+        return confident >= REQUIRED_WINDOWS
     }
 }
 
