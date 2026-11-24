@@ -62,6 +62,22 @@ class SpeakerEmbeddingClustererTest {
         assertEquals(0, c.observe(8, floatArrayOf(0.99f, 0.01f), 80).speakerIndex)
     }
 
+
+    @Test fun retainedSpeakerAssignmentsStayBounded() {
+        val c = clusterer()
+        c.observe(1, floatArrayOf(1f, 0f), 80)
+        val confirmed = c.observe(2, floatArrayOf(0.99f, 0.01f), 80)
+        assertEquals(0, confirmed.speakerIndex)
+
+        var latest = confirmed
+        for (segmentId in 3L..45L) {
+            latest = c.observe(segmentId, floatArrayOf(1f, 0.01f), 80)
+        }
+        assertTrue(latest.speakerAssignments.size <= 30)
+        assertFalse(latest.speakerAssignments.containsKey(1L))
+        assertTrue(latest.speakerAssignments.containsKey(45L))
+    }
+
     @Test fun threeIndependentSegmentsAreAllReturnedForRetroactiveLabeling() {
         val c = clusterer(confirmations = 3)
         c.observe(20, floatArrayOf(1f, 0f), 80)
