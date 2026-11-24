@@ -46,6 +46,7 @@ class StreamingSttEngine(
     private val scope: CoroutineScope,
     private val onResult: (SpeechResult) -> Unit,
     private val onError: (String?) -> Unit = {},
+    private val onSingingUpdate: (Long) -> Unit = {},
     private val speakerModelDir: File? = null,
     private val yamnetModelFile: File? = null
 ) : SpeechEngine {
@@ -63,6 +64,8 @@ class StreamingSttEngine(
     @Volatile private var yamnetWindows = newYamnetChannel()
     private val singingEvidenceLock = Any()
     private val timedSingingEvidence = ArrayDeque<TimedSingingEvidence>()
+    private val pendingSingingSegments = ArrayDeque<PendingSingingSegment>()
+    private var nextSegmentId = 0L
     @Volatile private var captureSamplePosition = 0L
     @Volatile private var lastFinalizedSegmentSample = 0L
 
@@ -74,7 +77,11 @@ class StreamingSttEngine(
         yamnetWindows = newYamnetChannel()
         captureSamplePosition = 0L
         lastFinalizedSegmentSample = 0L
-        synchronized(singingEvidenceLock) { timedSingingEvidence.clear() }
+        synchronized(singingEvidenceLock) {
+            timedSingingEvidence.clear()
+            pendingSingingSegments.clear()
+            nextSegmentId = 0L
+        }
         running = true
         paused = false
         scope.launch(Dispatchers.IO) { startInternal() }
@@ -344,10 +351,24 @@ class StreamingSttEngine(
                 // exact Vosk segment. A prior song can never tag the next line.
                 val segmentStartSample = lastFinalizedSegmentSample
                 val segmentEndSample = captureSampleCursor
-                val isSinging = hasSingingEvidenceForSegment(
-                    segmentStartSample,
-                    segmentEndSample
+                val segmentId = synchronized(singingEvidenceLock) {
+                    ++nextSegmentId
+                }
+                val pending = PendingSingingSegment(
+                    id = segmentId,
+                    startSample = segmentStartSample,
+                    endSample = segmentEndSample
                 )
+                synchronized(singingEvidenceLock) {
+                    pendingSingingSegments.addLast(pending)
+                    while (pendingSingingSegments.size > MAX_PENDING_SINGING_SEGMENTS) {
+                        pendingSingingSegments.removeFirst()
+                    }
+                }
+                val isSinging = hasSingingEvidenceForSegment(segmentStartSample, segmentEndSample)
+                if (isSinging) {
+                    synchronized(singingEvidenceLock) { pending.singingReported = true }
+                }
                 lastFinalizedSegmentSample = segmentEndSample
 
                 if (result.text.isNotBlank()) {
@@ -357,10 +378,17 @@ class StreamingSttEngine(
                             isFinal = true,
                             speakerEmbedding = result.speakerEmbedding,
                             speakerFrames = result.speakerFrames,
-                            isSinging = isSinging
+                            isSinging = isSinging,
+                            segmentId = segmentId
                         )
                     )
+                    synchronized(singingEvidenceLock) { pending.resultEmitted = true }
+                    reportLateSingingIfReady()
                     lastEmittedPartial = ""
+                } else {
+                    synchronized(singingEvidenceLock) {
+                        pendingSingingSegments.removeAll { it.id == segmentId }
+                    }
                 }
             } else if (result.text.isNotBlank() && result.text != lastEmittedPartial) {
                 // Live partial — drives the "words appearing as you speak" overlay.
@@ -407,10 +435,46 @@ class StreamingSttEngine(
                             timedSingingEvidence.removeFirst()
                         }
                     }
+                    reportLateSingingIfReady()
                 }
             } finally {
                 classifier.close()
             }
+        }
+    }
+
+    private data class PendingSingingSegment(
+        val id: Long,
+        val startSample: Long,
+        val endSample: Long,
+        var resultEmitted: Boolean = false,
+        var singingReported: Boolean = false
+    )
+
+    /**
+     * YAMNet is intentionally asynchronous. If a matching window finishes after
+     * Vosk emitted its line, notify the service to mark that exact line CS.
+     * Never delay or revise the Vosk transcript itself.
+     */
+    private fun reportLateSingingIfReady() {
+        val readyIds = synchronized(singingEvidenceLock) {
+            val evidence = timedSingingEvidence.toList()
+            pendingSingingSegments.filter { segment ->
+                segment.resultEmitted &&
+                    !segment.singingReported &&
+                    SegmentSingingEvidence.hasConfidentSinging(
+                        segment.startSample,
+                        segment.endSample,
+                        evidence
+                    )
+            }.map { segment ->
+                segment.singingReported = true
+                segment.id
+            }
+        }
+        readyIds.forEach { id ->
+            try { onSingingUpdate(id) }
+            catch (t: Throwable) { Log.w(TAG, "Late singing update callback failed", t) }
         }
     }
 
@@ -487,6 +551,7 @@ class StreamingSttEngine(
         private const val CHUNK_BYTES = 3200
         private const val YAMNET_HOP_SAMPLES = 7_680 // 480 ms, 50% overlap
         private const val MAX_EVIDENCE_HISTORY_SAMPLES = SAMPLE_RATE * 20L
+        private const val MAX_PENDING_SINGING_SEGMENTS = 64
         private const val SILENCE_AVERAGE_ABS_THRESHOLD = 120
         private const val SILENT_CHUNKS_BEFORE_SYSTEM_HINT = 30 // ~3s of silence
         private const val NO_CAPTURABLE_AUDIO_MESSAGE =
