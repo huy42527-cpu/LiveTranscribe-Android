@@ -41,6 +41,7 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
         var speakerModel: SpeakerModel? = null
         try {
             speakerModel = speakerModelDir?.let { SpeakerModel(it.absolutePath) }
+            Log.i("LocalVoskSttClient", "openSession speakerModelRequested=${speakerModelDir != null} speakerModelLoaded=${speakerModel != null}")
             val recognizer = if (speakerModel == null) {
                 Recognizer(model, sampleRate.toFloat())
             } else {
@@ -165,9 +166,13 @@ class VoskStreamingSession internal constructor(
                 text = json.optString("text").trim(),
                 speakerEmbedding = embedding,
                 speakerFrames = json.optInt("spk_frames", 0).coerceAtLeast(0)
-            )
+            ).also { parsed ->
+                Log.i("VoskStreamingSession", "final embeddingPresent=${parsed.speakerEmbedding != null} embeddingSize=${parsed.speakerEmbedding?.size ?: 0} frames=${parsed.speakerFrames}")
+            }
         } catch (_: Throwable) {
-            FinalResult(LocalVoskSttClient.extractText(resultJson))
+            FinalResult(LocalVoskSttClient.extractText(resultJson)).also {
+                Log.w("VoskStreamingSession", "final JSON parse failed; speaker embedding unavailable")
+            }
         }
     }
 
