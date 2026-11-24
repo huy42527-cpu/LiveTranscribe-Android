@@ -355,22 +355,20 @@ class CaptionForegroundService : Service() {
                                 embedding = embedding,
                                 frameCount = result.speakerFrames
                             )
-                            if (decision.speakerIndex != null) {
-                                val confirmedIds = decision.confirmedSegmentIds.toSet() + actualLine.id
-                                app.container.runtimeStore.update { state ->
-                                    state.copy(
-                                        speakerCount = clusterer.speakerCount(),
-                                        transcriptLines = state.transcriptLines.map { line ->
-                                            if (line.id in confirmedIds) {
-                                                line.copy(speakerIndex = decision.speakerIndex)
-                                            } else line
+                            app.container.runtimeStore.update { state ->
+                                val assignments = decision.speakerAssignments
+                                state.copy(
+                                    speakerCount = clusterer.speakerCount(),
+                                    transcriptLines = if (assignments.isEmpty()) {
+                                        state.transcriptLines
+                                    } else {
+                                        state.transcriptLines.map { line ->
+                                            assignments[line.id]?.let { index ->
+                                                line.copy(speakerIndex = index)
+                                            } ?: line
                                         }
-                                    )
-                                }
-                            } else {
-                                app.container.runtimeStore.update { state ->
-                                    state.copy(speakerCount = clusterer.speakerCount())
-                                }
+                                    }
+                                )
                             }
                         }
                     }
