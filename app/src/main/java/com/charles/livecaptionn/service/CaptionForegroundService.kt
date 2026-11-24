@@ -255,6 +255,8 @@ class CaptionForegroundService : Service() {
                 null
             }
 
+            Log.i("CaptionService", "auxModels speakerDirResolved=${speakerModelDir != null} yamnetResolved=${yamnetModelFile != null} speakerEnabled=${settings.speakerRecognitionEnabled} backend=${settings.sttBackend}")
+
             // Provisional thresholds are deliberately conservative and remain
             // experimental until calibrated against real Japanese live audio.
             speakerClusterer = if (speakerModelDir != null) {
@@ -325,7 +327,7 @@ class CaptionForegroundService : Service() {
 
             val onSpeechResult = { result: SpeechResult ->
                 val transcript = result.text.trim()
-                Log.d("CaptionService", "onSpeechResult final=${result.isFinal} text='$transcript'")
+                Log.d("CaptionService", "onSpeechResult final=${result.isFinal} chars=${transcript.length} embeddingPresent=${result.speakerEmbedding != null} embeddingSize=${result.speakerEmbedding?.size ?: 0} frames=${result.speakerFrames} singing=${result.isSinging} segmentId=${result.segmentId}")
                 val candidateId = lineIdCounter.incrementAndGet()
 
                 val updatedRuntime = app.container.runtimeStore.update { runtime ->
@@ -366,6 +368,7 @@ class CaptionForegroundService : Service() {
                                 embedding = embedding,
                                 frameCount = result.speakerFrames
                             )
+                            Log.i("CaptionService", "speakerCluster outcome=${decision.diagnostic} ignored=${decision.ignored} speakers=${clusterer.speakerCount()} assignments=${decision.speakerAssignments.size}")
                             app.container.runtimeStore.update { state ->
                                 val assignments = decision.speakerAssignments
                                 state.copy(
@@ -381,6 +384,12 @@ class CaptionForegroundService : Service() {
                                     }
                                 )
                             }
+                        } else if (clusterer == null) {
+                            Log.w("CaptionService", "speakerCluster skipped: clustererUnavailable")
+                        } else if (embedding == null) {
+                            Log.w("CaptionService", "speakerCluster skipped: embeddingMissing frames=${result.speakerFrames}")
+                        } else if (result.isSinging) {
+                            Log.d("CaptionService", "speakerCluster skipped: singingFlagged")
                         }
                     }
                     queueTranslation(
