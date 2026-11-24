@@ -4,6 +4,7 @@ import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.sqrt
 
 /**
  * YAMNet single-window inference. Input is 0.975 s mono PCM at 16 kHz.
@@ -38,9 +39,23 @@ internal class YamnetSingingClassifier(modelFile: File) : AutoCloseable {
         }
         input.rewind()
         interpreter.run(input, output)
+        var sumSquares = 0.0
+        var peak = 0f
+        samples.forEach { sample ->
+            val magnitude = kotlin.math.abs(sample)
+            if (magnitude > peak) peak = magnitude
+            sumSquares += sample.toDouble() * sample.toDouble()
+        }
+        val topClasses = output[0].indices
+            .sortedByDescending { output[0][it] }
+            .take(TOP_CLASS_COUNT)
+            .map { index -> ClassScore(index, output[0][index].coerceIn(0f, 1f)) }
         return Scores(
             speech = output[0][SPEECH_INDEX].coerceIn(0f, 1f),
-            singing = output[0][SINGING_INDEX].coerceIn(0f, 1f)
+            singing = output[0][SINGING_INDEX].coerceIn(0f, 1f),
+            rms = sqrt(sumSquares / samples.size).toFloat(),
+            peak = peak,
+            topClasses = topClasses
         )
     }
 
@@ -48,11 +63,20 @@ internal class YamnetSingingClassifier(modelFile: File) : AutoCloseable {
         interpreter.close()
     }
 
-    data class Scores(val speech: Float, val singing: Float)
+    data class ClassScore(val index: Int, val score: Float)
+
+    data class Scores(
+        val speech: Float,
+        val singing: Float,
+        val rms: Float = 0f,
+        val peak: Float = 0f,
+        val topClasses: List<ClassScore> = emptyList()
+    )
 
     companion object {
         const val WINDOW_SAMPLES = 15_600
         private const val CLASS_COUNT = 521
+        private const val TOP_CLASS_COUNT = 8
         // Verified against the model's companion label list.
         private const val SPEECH_INDEX = 0
         private const val SINGING_INDEX = 24
@@ -85,6 +109,9 @@ internal object SegmentSingingEvidence {
     private const val SINGING_THRESHOLD = 0.55f
     private const val SPEECH_DOMINANCE_MARGIN = 0.10f
     private const val REQUIRED_WINDOWS = 2
+    // YAMNet scores close to zero for both classes are lack of evidence,
+    // not proof of speech. Require a meaningful Speech score before vetoing.
+    private const val MIN_SPEECH_EVIDENCE = 0.25f
 
     fun hasConfidentSinging(
         segmentStartSample: Long,
@@ -96,15 +123,15 @@ internal object SegmentSingingEvidence {
         val contained = windows.filter {
             it.startSample >= segmentStartSample && it.endSample <= segmentEndSample
         }
-        // A Vosk segment can contain both streamer speech and a later music-only
-        // pause. Do not label that whole line as singing just because two later
-        // windows are singer-dominant. Any speech-dominant/ambiguous window makes
-        // the segment ineligible for CS. This gate affects labels only; Vosk
-        // transcription and translation continue independently.
-        val containsStreamerSpeechEvidence = contained.any {
-            it.scores.speech >= it.scores.singing - SPEECH_DOMINANCE_MARGIN
+        // Speech is only a veto when YAMNet has meaningful Speech evidence.
+        // Scores near zero for both classes mean "uncertain", not "streamer spoke".
+        // This remains conservative: a clear Speech-dominant/ambiguous window
+        // still prevents CS for the whole Vosk segment.
+        val containsSpeechDominantOrAmbiguousWindow = contained.any {
+            it.scores.speech >= MIN_SPEECH_EVIDENCE &&
+                it.scores.speech >= it.scores.singing - SPEECH_DOMINANCE_MARGIN
         }
-        if (containsStreamerSpeechEvidence) return false
+        if (containsSpeechDominantOrAmbiguousWindow) return false
 
         val confident = contained.count {
             it.scores.singing >= SINGING_THRESHOLD &&

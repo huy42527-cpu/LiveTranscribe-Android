@@ -439,7 +439,15 @@ class StreamingSttEngine(
                     synchronized(singingEvidenceLock) {
                         yamnetClassifiedWindows += 1
                         if (yamnetClassifiedWindows % 5L == 0L) {
-                            Log.d(TAG, "yamnet windows=$yamnetClassifiedWindows speech=${scores.speech} singing=${scores.singing}")
+                            val top = scores.topClasses.joinToString(",") {
+                                "${it.index}:${it.score}"
+                            }
+                            Log.d(
+                                TAG,
+                                "yamnet windows=$yamnetClassifiedWindows " +
+                                    "rms=${scores.rms} peak=${scores.peak} " +
+                                    "speech=${scores.speech} singing=${scores.singing} top=[$top]"
+                            )
                         }
                         timedSingingEvidence.addLast(
                             TimedSingingEvidence(

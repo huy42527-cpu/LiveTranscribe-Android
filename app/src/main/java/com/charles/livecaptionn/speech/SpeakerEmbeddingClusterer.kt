@@ -25,7 +25,9 @@ internal class SpeakerEmbeddingClusterer(
         val speakerAssignments: Map<Long, Int> = emptyMap(),
         val ignored: Boolean = false,
         /** Machine-readable reason for the latest assignment decision; useful for diagnostics. */
-        val diagnostic: String = "unassigned"
+        val diagnostic: String = "unassigned",
+        /** Similarity scores for diagnosing profile/candidate merges without exposing vectors. */
+        val similaritySummary: String = ""
     )
 
     private data class Profile(
@@ -72,9 +74,13 @@ internal class SpeakerEmbeddingClusterer(
 
         val best = matchingProfiles.getOrNull(0)
         val secondScore = matchingProfiles.getOrNull(1)?.second
+        val profileScores = matchingProfiles.take(3).joinToString(",") { it.second.toString() }
         if (best != null && best.second >= matchThreshold) {
             if (secondScore != null && best.second - secondScore < minMatchMargin) {
-                return Decision(diagnostic = "ambiguous-profile-match")
+                return Decision(
+                    diagnostic = "ambiguous-profile-match",
+                    similaritySummary = "profiles=[$profileScores]"
+                )
             }
             updateCentroid(best.first, normalized)
             best.first.segmentIds += segmentId
@@ -82,30 +88,42 @@ internal class SpeakerEmbeddingClusterer(
             return Decision(
                 speakerIndex = best.first.index,
                 speakerAssignments = currentAssignments(),
-                diagnostic = "matched-existing-speaker"
+                diagnostic = "matched-existing-speaker",
+                similaritySummary = "profiles=[$profileScores]"
             )
         }
 
         // If the vector is dimensionally incompatible with existing profiles,
         // it cannot safely create a profile in this session.
-        if (profiles.any { it.centroid.size != normalized.size }) return Decision(diagnostic = "embedding-dimension-mismatch")
+        if (profiles.any { it.centroid.size != normalized.size }) {
+            return Decision(
+                diagnostic = "embedding-dimension-mismatch",
+                similaritySummary = "profiles=[$profileScores];candidate=not-evaluated"
+            )
+        }
 
-        val candidate = candidates
+        val matchingCandidates = candidates
             .filter { it.centroid.size == normalized.size }
             .map { it to cosine(it.centroid, normalized) }
-            .maxByOrNull { it.second }
+            .sortedByDescending { it.second }
+        val candidateScores = matchingCandidates.take(3).joinToString(",") { it.second.toString() }
+        val candidate = matchingCandidates.firstOrNull()
             ?.takeIf { it.second >= matchThreshold }
             ?.first
+        val similaritySummary = "profiles=[$profileScores];candidates=[$candidateScores]"
 
         if (candidate == null) {
             candidates += Candidate(normalized, 1, mutableListOf(segmentId), nowMs)
             trimCandidates()
-            return Decision(diagnostic = "new-candidate-pending")
+            return Decision(
+                diagnostic = "new-candidate-pending",
+                similaritySummary = similaritySummary
+            )
         }
 
         // A repeated callback/revision for the same Vosk segment is not
         // independent evidence and must never confirm a new speaker.
-        if (segmentId in candidate.segmentIds) return Decision(diagnostic = "duplicate-segment")
+        if (segmentId in candidate.segmentIds) return Decision(diagnostic = "duplicate-segment", similaritySummary = similaritySummary)
 
         updateCandidate(candidate, normalized)
         candidate.observations += 1
@@ -114,10 +132,10 @@ internal class SpeakerEmbeddingClusterer(
             candidate.segmentIds += segmentId
         }
 
-        if (candidate.observations < confirmationSegments) return Decision(diagnostic = "candidate-awaiting-confirmation")
+        if (candidate.observations < confirmationSegments) return Decision(diagnostic = "candidate-awaiting-confirmation", similaritySummary = similaritySummary)
         if (profiles.size >= maxSpeakers) {
             candidates.remove(candidate)
-            return Decision(diagnostic = "maximum-speakers-reached")
+            return Decision(diagnostic = "maximum-speakers-reached", similaritySummary = similaritySummary)
         }
 
         val profile = Profile(
@@ -141,7 +159,8 @@ internal class SpeakerEmbeddingClusterer(
             speakerIndex = profile.index,
             confirmedSegmentIds = candidate.segmentIds.toList(),
             speakerAssignments = currentAssignments(),
-            diagnostic = "new-speaker-confirmed"
+            diagnostic = "new-speaker-confirmed",
+            similaritySummary = similaritySummary
         )
     }
 

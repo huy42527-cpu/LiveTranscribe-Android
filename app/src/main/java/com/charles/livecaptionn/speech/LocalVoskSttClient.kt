@@ -27,6 +27,12 @@ import java.io.File
  * to prevent races between concurrent openSession/transcribe calls.
  */
 class LocalVoskSttClient(private val registry: VoskModelRegistry) {
+    private companion object {
+        const val SPEAKER_INITIAL_SILENCE_SECONDS = 5.0f
+        const val SPEAKER_TRAILING_SILENCE_SECONDS = 0.35f
+        const val SPEAKER_MIN_UTTERANCE_SECONDS = 20.0f
+    }
+
     private var cachedLanguageCode: String? = null
     private var cachedModel: Model? = null
     private val modelMutex = Mutex()
@@ -49,6 +55,21 @@ class LocalVoskSttClient(private val registry: VoskModelRegistry) {
             }.apply {
                 setWords(false)
                 setMaxAlternatives(0)
+                if (speakerModel != null) {
+                    // Shorter trailing-silence endpointing gives Vosk more
+                    // speaker-homogeneous utterances when turns have pauses.
+                    // Audio feeding remains continuous; this changes only
+                    // where Vosk finalizes a segment.
+                    setEndpointerDelays(
+                        SPEAKER_INITIAL_SILENCE_SECONDS,
+                        SPEAKER_TRAILING_SILENCE_SECONDS,
+                        SPEAKER_MIN_UTTERANCE_SECONDS
+                    )
+                    Log.i(
+                        "LocalVoskSttClient",
+                        "speakerEndpointer configured trailingSilence=${SPEAKER_TRAILING_SILENCE_SECONDS}s"
+                    )
+                }
             }
             VoskStreamingSession(recognizer, speakerModel)
         } catch (t: Throwable) {

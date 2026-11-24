@@ -101,6 +101,21 @@ class SegmentSingingEvidenceTest {
         )
     }
 
+    @Test fun lowConfidenceNonSpeechWindowDoesNotVetoTwoStrongSingingWindows() {
+        val history = listOf(
+            window(0, 15_600, 0.01f, 0.01f),
+            window(7_680, 23_280, 0.05f, 0.90f),
+            window(15_360, 30_960, 0.04f, 0.88f)
+        )
+        assertTrue(
+            SegmentSingingEvidence.hasConfidentSinging(
+                segmentStartSample = 0,
+                segmentEndSample = 32_000,
+                windows = history
+            )
+        )
+    }
+
     @Test fun partiallyOverlappingWindowIsExcluded() {
         val history = listOf(
             window(0, 15_600, 0.1f, 0.9f),

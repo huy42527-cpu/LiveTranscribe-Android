@@ -368,7 +368,14 @@ class CaptionForegroundService : Service() {
                                 embedding = embedding,
                                 frameCount = result.speakerFrames
                             )
-                            Log.i("CaptionService", "speakerCluster outcome=${decision.diagnostic} ignored=${decision.ignored} speakers=${clusterer.speakerCount()} assignments=${decision.speakerAssignments.size}")
+                            Log.i(
+                                "CaptionService",
+                                "speakerCluster outcome=${decision.diagnostic} " +
+                                    "ignored=${decision.ignored} frames=${result.speakerFrames} " +
+                                    "embeddingSize=${embedding.size} speakers=${clusterer.speakerCount()} " +
+                                    "assignments=${decision.speakerAssignments.size} " +
+                                    "similarity=${decision.similaritySummary}"
+                            )
                             app.container.runtimeStore.update { state ->
                                 val assignments = decision.speakerAssignments
                                 state.copy(
