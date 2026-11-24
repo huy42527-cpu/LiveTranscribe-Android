@@ -40,6 +40,20 @@ class SpeakerEmbeddingClustererTest {
         assertEquals(1, c.speakerCount())
     }
 
+
+    @Test fun staleCandidateExpiresAfterThirtySeconds() {
+        val c = clusterer()
+        assertNull(c.observe(1, floatArrayOf(1f, 0f), 80, nowMs = 0L).speakerIndex)
+
+        // A different segment after the candidate TTL must start fresh.
+        assertNull(c.observe(2, floatArrayOf(1f, 0f), 80, nowMs = 30_001L).speakerIndex)
+        assertEquals(0, c.speakerCount())
+
+        val confirmed = c.observe(3, floatArrayOf(0.99f, 0.01f), 80, nowMs = 30_002L)
+        assertEquals(0, confirmed.speakerIndex)
+        assertEquals(listOf(2L, 3L), confirmed.confirmedSegmentIds)
+    }
+
     @Test fun duplicateSegmentIdCannotConfirmNewSpeaker() {
         val c = clusterer()
         assertNull(c.observe(7, floatArrayOf(1f, 0f), 80).speakerIndex)
