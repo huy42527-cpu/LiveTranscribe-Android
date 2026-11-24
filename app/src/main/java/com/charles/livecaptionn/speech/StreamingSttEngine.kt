@@ -10,7 +10,6 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.os.Build
-import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.charles.livecaptionn.settings.AudioSource
@@ -62,8 +61,10 @@ class StreamingSttEngine(
     // A channel is scoped to one recognition session; stop() closes it.
     // Recreate it on every start so later sessions can classify audio too.
     @Volatile private var yamnetWindows = newYamnetChannel()
-    @Volatile private var latestSingingConfident = false
-    @Volatile private var latestSingingAtMs = 0L
+    private val singingEvidenceLock = Any()
+    private val timedSingingEvidence = ArrayDeque<TimedSingingEvidence>()
+    @Volatile private var captureSamplePosition = 0L
+    @Volatile private var lastFinalizedSegmentSample = 0L
 
     @Volatile private var running = false
     @Volatile private var paused = false
@@ -71,22 +72,28 @@ class StreamingSttEngine(
     override fun start() {
         if (running) return
         yamnetWindows = newYamnetChannel()
-        latestSingingConfident = false
-        latestSingingAtMs = 0L
+        captureSamplePosition = 0L
+        lastFinalizedSegmentSample = 0L
+        synchronized(singingEvidenceLock) { timedSingingEvidence.clear() }
         running = true
         paused = false
         scope.launch(Dispatchers.IO) { startInternal() }
     }
 
-    private fun newYamnetChannel() = Channel<FloatArray>(
-        capacity = 1,
+    private fun newYamnetChannel() = Channel<YamnetWindow>(
+        capacity = 4,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
     override fun stop() {
         running = false
         paused = false
-        val finalSingingEvidence = hasRecentSingingEvidence()
+        // The final Vosk flush belongs only to audio since the last accepted
+        // segment boundary. Never reuse a global "recent singing" flag here.
+        val finalSingingEvidence = hasSingingEvidenceForSegment(
+            lastFinalizedSegmentSample,
+            captureSamplePosition
+        )
         val activeCaptureJob = captureJob
         captureJob = null
         try { audioRecord?.stop() } catch (_: Throwable) {}
@@ -94,8 +101,6 @@ class StreamingSttEngine(
         yamnetWindows.close()
         yamnetJob?.cancel()
         yamnetJob = null
-        latestSingingConfident = false
-        latestSingingAtMs = 0L
         try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
         synchronized(sessionLock) {
@@ -255,6 +260,7 @@ class StreamingSttEngine(
         var yamnetWriteIndex = 0
         var yamnetSampleCount = 0
         var samplesSinceYamnetWindow = 0
+        var captureSampleCursor = 0L
 
         while (scope.isActive && running) {
             if (paused) {
@@ -284,10 +290,18 @@ class StreamingSttEngine(
             val avgAbs = averageAbsAmplitude(buffer, read)
             val isSilent = avgAbs < SILENCE_AVERAGE_ABS_THRESHOLD
 
+            // Track capture-time sample positions independently of classifier
+            // availability so Vosk segment boundaries share the same timeline.
+            val chunkStartSample = captureSampleCursor
+            captureSampleCursor += read / 2
+            captureSamplePosition = captureSampleCursor
+
             // Copy the same captured PCM into a bounded, asynchronous classifier
-            // branch. Vosk never waits for YAMNet inference.
+            // branch. Each window carries its exact capture-time interval.
+            // Vosk never waits for YAMNet inference.
             if (yamnetModelFile != null) {
                 var sampleOffset = 0
+                var absoluteSamplePosition = chunkStartSample
                 while (sampleOffset + 1 < read) {
                     val raw = (buffer[sampleOffset].toInt() and 0xFF) or
                         (buffer[sampleOffset + 1].toInt() shl 8)
@@ -301,9 +315,17 @@ class StreamingSttEngine(
                         val window = FloatArray(yamnetRing.size) { index ->
                             yamnetRing[(yamnetWriteIndex + index) % yamnetRing.size]
                         }
-                        yamnetWindows.trySend(window)
+                        val windowEndSample = absoluteSamplePosition + 1
+                        yamnetWindows.trySend(
+                            YamnetWindow(
+                                samples = window,
+                                startSample = windowEndSample - YamnetSingingClassifier.WINDOW_SAMPLES,
+                                endSample = windowEndSample
+                            )
+                        )
                         samplesSinceYamnetWindow = 0
                     }
+                    absoluteSamplePosition += 1
                     sampleOffset += 2
                 }
             }
@@ -333,7 +355,16 @@ class StreamingSttEngine(
             if (!running) break
 
             if (result.accepted) {
-                // Vosk hit a silence/segment boundary and emitted a finalized chunk.
+                // Evaluate only classifier windows wholly contained in this
+                // exact Vosk segment. A prior song can never tag the next line.
+                val segmentStartSample = lastFinalizedSegmentSample
+                val segmentEndSample = captureSampleCursor
+                val isSinging = hasSingingEvidenceForSegment(
+                    segmentStartSample,
+                    segmentEndSample
+                )
+                lastFinalizedSegmentSample = segmentEndSample
+
                 if (result.text.isNotBlank()) {
                     onResult(
                         SpeechResult(
@@ -341,7 +372,7 @@ class StreamingSttEngine(
                             isFinal = true,
                             speakerEmbedding = result.speakerEmbedding,
                             speakerFrames = result.speakerFrames,
-                            isSinging = hasRecentSingingEvidence()
+                            isSinging = isSinging
                         )
                     )
                     lastEmittedPartial = ""
@@ -368,18 +399,29 @@ class StreamingSttEngine(
                 Log.w(TAG, "YAMNet unavailable; continuing Vosk without singing labels", t)
                 return@launch
             }
-            val tracker = SingingEvidenceTracker()
             try {
                 for (window in sessionWindows) {
                     val scores = try {
-                        classifier.classify(window)
+                        classifier.classify(window.samples)
                     } catch (t: Throwable) {
                         Log.w(TAG, "YAMNet inference failed; dropping this window", t)
                         continue
                     }
-                    val evidence = tracker.add(scores)
-                    latestSingingConfident = evidence.confidentSinger
-                    latestSingingAtMs = SystemClock.elapsedRealtime()
+                    synchronized(singingEvidenceLock) {
+                        timedSingingEvidence.addLast(
+                            TimedSingingEvidence(
+                                startSample = window.startSample,
+                                endSample = window.endSample,
+                                scores = scores
+                            )
+                        )
+                        val oldestAllowed = window.endSample - MAX_EVIDENCE_HISTORY_SAMPLES
+                        while (timedSingingEvidence.isNotEmpty() &&
+                            timedSingingEvidence.first().endSample < oldestAllowed
+                        ) {
+                            timedSingingEvidence.removeFirst()
+                        }
+                    }
                 }
             } finally {
                 classifier.close()
@@ -387,9 +429,19 @@ class StreamingSttEngine(
         }
     }
 
-    private fun hasRecentSingingEvidence(): Boolean {
-        return latestSingingConfident &&
-            SystemClock.elapsedRealtime() - latestSingingAtMs <= YAMNET_EVIDENCE_MAX_AGE_MS
+    private fun hasSingingEvidenceForSegment(
+        segmentStartSample: Long,
+        segmentEndSample: Long
+    ): Boolean {
+        if (yamnetModelFile == null || segmentEndSample <= segmentStartSample) return false
+        val snapshot = synchronized(singingEvidenceLock) {
+            timedSingingEvidence.toList()
+        }
+        return SegmentSingingEvidence.hasConfidentSinging(
+            segmentStartSample = segmentStartSample,
+            segmentEndSample = segmentEndSample,
+            windows = snapshot
+        )
     }
 
     private fun buildAudioRecord(): AudioRecord? {
@@ -449,7 +501,7 @@ class StreamingSttEngine(
         /** ~100ms at 16kHz mono 16-bit = 3200 bytes. Small chunks = live partials. */
         private const val CHUNK_BYTES = 3200
         private const val YAMNET_HOP_SAMPLES = 7_680 // 480 ms, 50% overlap
-        private const val YAMNET_EVIDENCE_MAX_AGE_MS = 1_200L
+        private const val MAX_EVIDENCE_HISTORY_SAMPLES = SAMPLE_RATE * 20L
         private const val SILENCE_AVERAGE_ABS_THRESHOLD = 120
         private const val SILENT_CHUNKS_BEFORE_SYSTEM_HINT = 30 // ~3s of silence
         private const val NO_CAPTURABLE_AUDIO_MESSAGE =

@@ -60,6 +60,51 @@ internal class YamnetSingingClassifier(modelFile: File) : AutoCloseable {
 }
 
 /**
+ * One classifier input window with its position on the captured PCM timeline.
+ * End positions are exclusive sample indices.
+ */
+internal data class YamnetWindow(
+    val samples: FloatArray,
+    val startSample: Long,
+    val endSample: Long
+)
+
+/** Timestamped YAMNet output retained briefly for Vosk segment association. */
+internal data class TimedSingingEvidence(
+    val startSample: Long,
+    val endSample: Long,
+    val scores: YamnetSingingClassifier.Scores
+)
+
+/**
+ * Conservative segment-level singing decision. Only windows fully contained
+ * in the Vosk segment are eligible, preventing adjacent-segment evidence leak.
+ * At least two individually singing-dominant windows are required.
+ */
+internal object SegmentSingingEvidence {
+    private const val SINGING_THRESHOLD = 0.55f
+    private const val SPEECH_DOMINANCE_MARGIN = 0.10f
+    private const val REQUIRED_WINDOWS = 2
+
+    fun hasConfidentSinging(
+        segmentStartSample: Long,
+        segmentEndSample: Long,
+        windows: List<TimedSingingEvidence>
+    ): Boolean {
+        if (segmentEndSample <= segmentStartSample) return false
+
+        val contained = windows.filter {
+            it.startSample >= segmentStartSample && it.endSample <= segmentEndSample
+        }
+        val confident = contained.filter {
+            it.scores.singing >= SINGING_THRESHOLD &&
+                it.scores.singing > it.scores.speech + SPEECH_DOMINANCE_MARGIN
+        }
+        return confident.size >= REQUIRED_WINDOWS
+    }
+}
+
+/**
  * Hysteresis over overlapping windows. Two positive windows among the latest
  * three are required; speech must score clearly below singing. Similar
  * speech/singing scores are treated as mixed/ambiguous and do not qualify.
