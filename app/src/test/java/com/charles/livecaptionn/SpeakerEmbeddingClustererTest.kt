@@ -75,6 +75,27 @@ class SpeakerEmbeddingClustererTest {
         assertEquals(listOf(3L, 4L), second.confirmedSegmentIds)
     }
 
+
+    @Test fun speakerLabelsFollowFirstObservedSegmentNotConfirmationOrder() {
+        val c = clusterer()
+
+        // Speaker A appears first but is confirmed after speaker B.
+        assertNull(c.observe(10, floatArrayOf(1f, 0f), 80).speakerIndex)
+        assertNull(c.observe(11, floatArrayOf(0f, 1f), 80).speakerIndex)
+
+        val confirmedB = c.observe(12, floatArrayOf(0.01f, 1f), 80)
+        assertEquals(0, confirmedB.speakerIndex)
+        assertEquals(0, confirmedB.speakerAssignments[11L])
+        assertEquals(0, confirmedB.speakerAssignments[12L])
+
+        val confirmedA = c.observe(13, floatArrayOf(0.99f, 0.01f), 80)
+        assertEquals(0, confirmedA.speakerIndex)
+        assertEquals(0, confirmedA.speakerAssignments[10L])
+        assertEquals(0, confirmedA.speakerAssignments[13L])
+        assertEquals(1, confirmedA.speakerAssignments[11L])
+        assertEquals(1, confirmedA.speakerAssignments[12L])
+    }
+
     @Test fun ambiguousMatchIsNotAssigned() {
         val c = clusterer(threshold = 0.5f, margin = 0.2f)
         c.observe(1, floatArrayOf(1f, 0f), 80)
