@@ -8,5 +8,7 @@ data class SpeechResult(
     /** Number of Vosk frames represented by [speakerEmbedding]. */
     val speakerFrames: Int = 0,
     /** True only when recent YAMNet evidence strongly favors singing over speech. */
-    val isSinging: Boolean = false
+    val isSinging: Boolean = false,
+    /** Stable engine segment identity used for late classifier updates. */
+    val segmentId: Long? = null
 )
