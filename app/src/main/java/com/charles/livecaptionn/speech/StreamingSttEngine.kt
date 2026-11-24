@@ -334,10 +334,7 @@ class StreamingSttEngine(
             val localSession = session ?: break
             val result = synchronized(sessionLock) {
                 if (!running || session !== localSession) null
-                else {
-                    localSession.feed(buffer, read).also {
-                    }
-                }
+                else localSession.feed(buffer, read)
             } ?: break
 
             if (!running) break
