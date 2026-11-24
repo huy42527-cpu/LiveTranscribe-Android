@@ -21,13 +21,16 @@ internal class SpeakerEmbeddingClusterer(
         val speakerIndex: Int? = null,
         /** Segment IDs confirmed together when a new speaker profile is created. */
         val confirmedSegmentIds: List<Long> = emptyList(),
+        /** Current speaker assignment for every segment retained by confirmed profiles. */
+        val speakerAssignments: Map<Long, Int> = emptyMap(),
         val ignored: Boolean = false
     )
 
     private data class Profile(
-        val index: Int,
+        var index: Int,
         var centroid: FloatArray,
-        var observations: Int = 1
+        var observations: Int = 1,
+        val segmentIds: MutableSet<Long> = linkedSetOf()
     )
 
     private data class Candidate(
@@ -64,7 +67,11 @@ internal class SpeakerEmbeddingClusterer(
                 return Decision()
             }
             updateCentroid(best.first, normalized)
-            return Decision(speakerIndex = best.first.index)
+            best.first.segmentIds += segmentId
+            return Decision(
+                speakerIndex = best.first.index,
+                speakerAssignments = currentAssignments()
+            )
         }
 
         // If the vector is dimensionally incompatible with existing profiles,
@@ -103,13 +110,23 @@ internal class SpeakerEmbeddingClusterer(
         val profile = Profile(
             index = profiles.size,
             centroid = candidate.centroid,
-            observations = candidate.observations
+            observations = candidate.observations,
+            segmentIds = candidate.segmentIds.toMutableSet()
         )
         profiles += profile
         candidates.remove(candidate)
+
+        // A candidate can be confirmed later than another speaker despite
+        // having appeared earlier. Reorder all profiles by their earliest
+        // observed segment, then return assignments so the service can
+        // retroactively correct labels already present in the transcript.
+        profiles.sortBy { it.segmentIds.minOrNull() ?: Long.MAX_VALUE }
+        profiles.forEachIndexed { index, item -> item.index = index }
+
         return Decision(
             speakerIndex = profile.index,
-            confirmedSegmentIds = candidate.segmentIds.toList()
+            confirmedSegmentIds = candidate.segmentIds.toList(),
+            speakerAssignments = currentAssignments()
         )
     }
 
@@ -121,6 +138,11 @@ internal class SpeakerEmbeddingClusterer(
 
     @Synchronized
     fun speakerCount(): Int = profiles.size
+
+    private fun currentAssignments(): Map<Long, Int> =
+        profiles.flatMap { profile ->
+            profile.segmentIds.map { segmentId -> segmentId to profile.index }
+        }.toMap()
 
     private fun trimCandidates() {
         while (candidates.size > 8) candidates.removeAt(0)
