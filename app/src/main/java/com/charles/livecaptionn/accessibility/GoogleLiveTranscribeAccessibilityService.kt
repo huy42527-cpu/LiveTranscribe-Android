@@ -14,19 +14,6 @@ import com.charles.livecaptionn.service.CaptionForegroundService
 class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
     private var lastText = ""
 
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        // Start the caption pipeline in external-transcript mode.
-        runCatching {
-            startForegroundService(
-                Intent(this, CaptionForegroundService::class.java)
-                    .setAction(CaptionForegroundService.ACTION_EXTERNAL_START)
-            )
-        }.onFailure {
-            Log.w(TAG, "Unable to start caption bridge", it)
-        }
-    }
-
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.packageName?.toString() != TARGET_PACKAGE) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
@@ -51,7 +38,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         lastText = newest
 
         runCatching {
-            startService(
+            startForegroundService(
                 Intent(this, CaptionForegroundService::class.java)
                     .setAction(CaptionForegroundService.ACTION_EXTERNAL_TEXT)
                     .putExtra(CaptionForegroundService.EXTRA_EXTERNAL_TEXT, newest)
