@@ -115,6 +115,26 @@ class SpeakerEmbeddingClustererTest {
         assertEquals(0, confirmedB.speakerAssignments[5L])
     }
 
+    @Test fun ambiguousVectorBetweenTwoPendingCandidatesDoesNotMergeEither() {
+        val c = clusterer(threshold = 0.8f, margin = 0.1f)
+        fun vector(degrees: Double): FloatArray {
+            val radians = Math.toRadians(degrees)
+            return floatArrayOf(kotlin.math.cos(radians).toFloat(), kotlin.math.sin(radians).toFloat())
+        }
+
+        assertNull(c.observe(1, vector(0.0), 80).speakerIndex)
+        assertNull(c.observe(2, vector(50.0), 80).speakerIndex)
+
+        val firstAmbiguous = c.observe(3, vector(25.0), 80)
+        assertNull(firstAmbiguous.speakerIndex)
+        assertEquals("ambiguous-candidate-match", firstAmbiguous.diagnostic)
+
+        val secondAmbiguous = c.observe(4, vector(25.0), 80)
+        assertNull(secondAmbiguous.speakerIndex)
+        assertEquals("ambiguous-candidate-match", secondAmbiguous.diagnostic)
+        assertEquals(0, c.speakerCount())
+    }
+
     @Test fun knownSpeakerReturnsSameIndex() {
         val c = clusterer()
         c.observe(1, floatArrayOf(1f, 0f), 80)

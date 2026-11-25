@@ -84,7 +84,21 @@ internal class SpeakerEmbeddingClusterer(
             .map { it to cosine(it.centroid, normalized) }
             .sortedByDescending { it.second }
         val candidateScores = matchingCandidates.take(3).joinToString(",") { it.second.toString() }
-        val candidate = matchingCandidates.firstOrNull()
+        val bestCandidate = matchingCandidates.getOrNull(0)
+        val secondCandidate = matchingCandidates.getOrNull(1)
+        if (
+            bestCandidate != null &&
+            secondCandidate != null &&
+            bestCandidate.second >= matchThreshold &&
+            secondCandidate.second >= matchThreshold &&
+            bestCandidate.second - secondCandidate.second < minMatchMargin
+        ) {
+            return Decision(
+                diagnostic = "ambiguous-candidate-match",
+                similaritySummary = similaritySummary
+            )
+        }
+        val candidate = bestCandidate
             ?.takeIf { it.second >= matchThreshold }
             ?.first
         val bestCandidateScore = matchingCandidates.firstOrNull()?.second
