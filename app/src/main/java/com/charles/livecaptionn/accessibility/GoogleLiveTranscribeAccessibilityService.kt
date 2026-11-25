@@ -40,7 +40,10 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         runCatching {
             windows.take(MAX_WINDOWS).forEach { window ->
                 window.root?.let { root ->
-                    collectJapaneseText(root, texts, depth = 0, visited = intArrayOf(0))
+                    val rootPackage = root.packageName?.toString().orEmpty()
+                    if (isRelevantPackage(rootPackage)) {
+                        collectJapaneseText(root, texts, depth = 0, visited = intArrayOf(0))
+                    }
                 }
             }
         }
