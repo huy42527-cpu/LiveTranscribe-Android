@@ -331,15 +331,21 @@ class CaptionForegroundService : Service() {
             val onSpeechResult = { result: SpeechResult ->
                 val transcript = result.text.trim()
                 val pendingSilenceText = silenceFinalizedText
-                silenceFinalizedText = null
                 val alreadyClosedBySilence = result.isFinal && transcript.isNotBlank() && transcript == pendingSilenceText
+                val repeatedClosedPartial = !result.isFinal && transcript.isNotBlank() &&
+                    transcript == pendingSilenceText &&
+                    app.container.runtimeStore.state.value.transcriptLines.lastOrNull()
+                        ?.let { it.isFinal && it.originalText == transcript } == true
+                if (result.isFinal || (transcript.isNotBlank() && transcript != pendingSilenceText)) {
+                    silenceFinalizedText = null
+                }
                 Log.d("CaptionService", "onSpeechResult final=${result.isFinal} chars=${transcript.length} embeddingPresent=${result.speakerEmbedding != null} embeddingSize=${result.speakerEmbedding?.size ?: 0} frames=${result.speakerFrames} singing=${result.isSinging} segmentId=${result.segmentId}")
                 val candidateId = lineIdCounter.incrementAndGet()
 
                 val updatedRuntime = app.container.runtimeStore.update { runtime ->
                     runtime.copy(
                         originalText = transcript,
-                        transcriptLines = if (alreadyClosedBySilence && runtime.transcriptLines.lastOrNull()?.let { it.isFinal && it.originalText == transcript } == true) {
+                        transcriptLines = if ((alreadyClosedBySilence || repeatedClosedPartial) && runtime.transcriptLines.lastOrNull()?.let { it.isFinal && it.originalText == transcript } == true) {
                             runtime.transcriptLines
                         } else recordTranscriptResult(
                             lines = runtime.transcriptLines,
@@ -353,7 +359,7 @@ class CaptionForegroundService : Service() {
                     )
                 }
 
-                val actualLine = updatedRuntime.transcriptLines.lastOrNull()
+                val actualLine = if (repeatedClosedPartial) null else updatedRuntime.transcriptLines.lastOrNull()
                     ?.takeIf {
                         it.originalText == transcript &&
                             it.isFinal == result.isFinal
