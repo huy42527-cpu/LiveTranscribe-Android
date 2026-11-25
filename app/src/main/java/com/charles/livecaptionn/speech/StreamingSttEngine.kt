@@ -612,6 +612,7 @@ class StreamingSttEngine(
     companion object {
         private const val TAG = "StreamingSttEngine"
         private const val SAMPLE_RATE = 16_000
+        private const val SILENCE_LINE_BREAK_SAMPLES = SAMPLE_RATE * 2L
         /** ~100ms at 16kHz mono 16-bit = 3200 bytes. Small chunks = live partials. */
         private const val CHUNK_BYTES = 3200
         private const val YAMNET_HOP_SAMPLES = 7_680 // 480 ms, 50% overlap
