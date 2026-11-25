@@ -84,6 +84,7 @@ internal class SpeakerEmbeddingClusterer(
             .map { it to cosine(it.centroid, normalized) }
             .sortedByDescending { it.second }
         val candidateScores = matchingCandidates.take(3).joinToString(",") { it.second.toString() }
+        val similaritySummary = "profiles=[$profileScores];candidates=[$candidateScores]"
         val bestCandidate = matchingCandidates.getOrNull(0)
         val secondCandidate = matchingCandidates.getOrNull(1)
         if (
@@ -104,7 +105,6 @@ internal class SpeakerEmbeddingClusterer(
         val bestCandidateScore = matchingCandidates.firstOrNull()?.second
         val profileMatches = best != null && best.second >= matchThreshold
         val candidateMatches = candidate != null && bestCandidateScore != null
-        val similaritySummary = "profiles=[$profileScores];candidates=[$candidateScores]"
 
         if (profileMatches && candidateMatches) {
             val difference = best!!.second - bestCandidateScore!!
