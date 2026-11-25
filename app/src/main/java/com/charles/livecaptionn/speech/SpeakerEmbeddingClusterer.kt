@@ -14,7 +14,9 @@ internal class SpeakerEmbeddingClusterer(
     private val matchThreshold: Float,
     private val minMatchMargin: Float,
     private val confirmationSegments: Int = 2,
-    private val maxSpeakers: Int = 6
+    private val maxSpeakers: Int = 16,
+    /** Higher evidence bar used only to confirm a brand-new speaker profile. */
+    private val newSpeakerThreshold: Float = 0.90f
 ) {
     data class Decision(
         /** Zero-based speaker index; convert to A/B/C only when displaying. */
@@ -54,6 +56,7 @@ internal class SpeakerEmbeddingClusterer(
         require(minMatchMargin in 0f..2f)
         require(confirmationSegments >= 2)
         require(maxSpeakers > 0)
+        require(newSpeakerThreshold in matchThreshold..1f)
     }
 
     @Synchronized
@@ -121,7 +124,9 @@ internal class SpeakerEmbeddingClusterer(
                         similaritySummary = similaritySummary
                     )
                 }
-                updateCentroid(best.first, normalized)
+                if (best.second >= (matchThreshold + 0.08f).coerceAtMost(1f)) {
+                    updateCentroid(best.first, normalized)
+                }
                 best.first.segmentIds += segmentId
                 trimProfileSegments(best.first)
                 return Decision(
@@ -139,7 +144,9 @@ internal class SpeakerEmbeddingClusterer(
                     similaritySummary = similaritySummary
                 )
             }
-            updateCentroid(best!!.first, normalized)
+            if (best!!.second >= (matchThreshold + 0.08f).coerceAtMost(1f)) {
+                updateCentroid(best.first, normalized)
+            }
             best.first.segmentIds += segmentId
             trimProfileSegments(best.first)
             return Decision(
@@ -180,6 +187,10 @@ internal class SpeakerEmbeddingClusterer(
         }
 
         if (candidate.observations < confirmationSegments) return Decision(diagnostic = "candidate-awaiting-confirmation", similaritySummary = similaritySummary)
+        // Require the latest independent segment to strongly agree before minting a permanent profile.
+        if ((bestCandidateScore ?: -1f) < newSpeakerThreshold) {
+            return Decision(diagnostic = "candidate-awaiting-stability", similaritySummary = similaritySummary)
+        }
         if (profiles.size >= maxSpeakers) {
             candidates.remove(candidate)
             return Decision(diagnostic = "maximum-speakers-reached", similaritySummary = similaritySummary)
