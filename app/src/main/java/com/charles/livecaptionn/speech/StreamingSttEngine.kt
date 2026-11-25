@@ -67,6 +67,9 @@ class StreamingSttEngine(
     private val pendingSingingSegments = ArrayDeque<PendingSingingSegment>()
     private var nextSegmentId = 0L
     private var yamnetClassifiedWindows = 0L
+    // Highest capture-time sample whose classifier window has completed.
+    // Used to avoid deciding CS from only the early part of a Vosk segment.
+    private var yamnetProcessedThroughSample = 0L
     @Volatile private var captureSamplePosition = 0L
     @Volatile private var lastFinalizedSegmentSample = 0L
 
@@ -83,6 +86,7 @@ class StreamingSttEngine(
             pendingSingingSegments.clear()
             nextSegmentId = 0L
             yamnetClassifiedWindows = 0L
+            yamnetProcessedThroughSample = 0L
         }
         running = true
         paused = false
@@ -369,7 +373,15 @@ class StreamingSttEngine(
                         pendingSingingSegments.removeFirst()
                     }
                 }
-                val evidenceSnapshot = synchronized(singingEvidenceLock) { timedSingingEvidence.toList() }
+                val evidenceSnapshot = synchronized(singingEvidenceLock) {
+                    timedSingingEvidence.toList()
+                }
+                val classifierCaughtUp = synchronized(singingEvidenceLock) {
+                    SingingEvidenceReadiness.isComplete(
+                        yamnetProcessedThroughSample,
+                        segmentEndSample
+                    )
+                }
                 val containedEvidence = evidenceSnapshot.filter {
                     it.startSample >= segmentStartSample && it.endSample <= segmentEndSample
                 }
@@ -379,9 +391,10 @@ class StreamingSttEngine(
                 val speechOrAmbiguousWindows = containedEvidence.count {
                     it.scores.speech >= it.scores.singing - 0.10f
                 }
-                val isSinging = SegmentSingingEvidence.hasConfidentSinging(
-                    segmentStartSample, segmentEndSample, evidenceSnapshot
-                )
+                val isSinging = classifierCaughtUp &&
+                    SegmentSingingEvidence.hasConfidentSinging(
+                        segmentStartSample, segmentEndSample, evidenceSnapshot
+                    )
                 Log.i(TAG, "segmentEvidence id=$segmentId durationMs=${(segmentEndSample - segmentStartSample) * 1000L / SAMPLE_RATE} containedWindows=${containedEvidence.size} singingDominant=$singingDominantWindows speechOrAmbiguous=$speechOrAmbiguousWindows cs=$isSinging")
                 if (isSinging) {
                     synchronized(singingEvidenceLock) { pending.singingReported = true }
@@ -458,6 +471,10 @@ class StreamingSttEngine(
                                 scores = scores
                             )
                         )
+                        yamnetProcessedThroughSample = maxOf(
+                            yamnetProcessedThroughSample,
+                            window.endSample
+                        )
                         val oldestAllowed = window.endSample - MAX_EVIDENCE_HISTORY_SAMPLES
                         while (timedSingingEvidence.isNotEmpty() &&
                             timedSingingEvidence.first().endSample < oldestAllowed
@@ -492,6 +509,10 @@ class StreamingSttEngine(
             pendingSingingSegments.filter { segment ->
                 segment.resultEmitted &&
                     !segment.singingReported &&
+                    SingingEvidenceReadiness.isComplete(
+                        yamnetProcessedThroughSample,
+                        segment.endSample
+                    ) &&
                     SegmentSingingEvidence.hasConfidentSinging(
                         segment.startSample,
                         segment.endSample,

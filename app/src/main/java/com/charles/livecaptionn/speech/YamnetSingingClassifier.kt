@@ -93,6 +93,12 @@ internal data class YamnetWindow(
     val endSample: Long
 )
 
+/** True only after YAMNet has processed at least through a segment's end sample. */
+internal object SingingEvidenceReadiness {
+    fun isComplete(processedThroughSample: Long, segmentEndSample: Long): Boolean =
+        processedThroughSample >= segmentEndSample
+}
+
 /** Timestamped YAMNet output retained briefly for Vosk segment association. */
 internal data class TimedSingingEvidence(
     val startSample: Long,

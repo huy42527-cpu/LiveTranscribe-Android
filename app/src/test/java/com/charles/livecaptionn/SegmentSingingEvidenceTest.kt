@@ -1,6 +1,7 @@
 package com.charles.livecaptionn
 
 import com.charles.livecaptionn.speech.SegmentSingingEvidence
+import com.charles.livecaptionn.speech.SingingEvidenceReadiness
 import com.charles.livecaptionn.speech.TimedSingingEvidence
 import com.charles.livecaptionn.speech.YamnetSingingClassifier
 import org.junit.Assert.assertFalse
@@ -52,6 +53,12 @@ class SegmentSingingEvidenceTest {
         assertTrue(
             SegmentSingingEvidence.hasConfidentSinging(0, 24_000, history)
         )
+    }
+
+    @Test fun classifierMustProcessThroughSegmentEndBeforeCsCanBeFinalized() {
+        assertFalse(SingingEvidenceReadiness.isComplete(9_999L, 10_000L))
+        assertTrue(SingingEvidenceReadiness.isComplete(10_000L, 10_000L))
+        assertTrue(SingingEvidenceReadiness.isComplete(10_500L, 10_000L))
     }
 
     @Test fun oneAvailableWindowIsInsufficient() {
