@@ -38,6 +38,8 @@ import com.charles.livecaptionn.speech.StreamingSttEngine
 import com.charles.livecaptionn.speech.SystemAudioEngine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
@@ -91,6 +93,10 @@ class CaptionForegroundService : Service() {
     )
 
     private var currentAudioSource = AudioSource.MIC
+    @Volatile private var externalTranscriptMode = false
+    @Volatile private var externalText = ""
+    private var externalFinalizeJob: Job? = null
+    private val pendingExternalTexts = ConcurrentLinkedQueue<String>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -115,7 +121,21 @@ class CaptionForegroundService : Service() {
             return START_NOT_STICKY
         }
         when (intent.action) {
+            ACTION_EXTERNAL_TEXT -> {
+                val text = intent.getStringExtra(EXTRA_EXTERNAL_TEXT).orEmpty().trim()
+                if (text.isNotBlank()) {
+                    externalTranscriptMode = true
+                    pendingExternalTexts.offer(text)
+                    if (!captionSessionActive.get()) {
+                        currentAudioSource = AudioSource.MIC
+                        if (enterForeground(AudioSource.MIC)) startFlow()
+                    } else {
+                        drainPendingExternalTexts()
+                    }
+                }
+            }
             ACTION_START -> {
+                externalTranscriptMode = false
                 // CRITICAL: call startForeground synchronously here, BEFORE
                 // any conditional / async work. Android's 5-second deadline
                 // after startForegroundService() is enforced strictly (and
@@ -219,7 +239,7 @@ class CaptionForegroundService : Service() {
                 failAndStop("This ML Kit language requires Pro. Choose a free language or upgrade.")
                 return@launch
             }
-            if (settings.sttBackend == SttBackend.LOCAL_VOSK) {
+            if (!externalTranscriptMode && settings.sttBackend == SttBackend.LOCAL_VOSK) {
                 val model = app.container.voskRegistry.installedModelFor(sttLanguageCode)
                 if (model == null) {
                     failAndStop("No on-device model installed for '$sttLanguageCode'. Download one first.")
@@ -451,7 +471,7 @@ class CaptionForegroundService : Service() {
             val backend = settings.sttBackend
             val useStreaming = backend == SttBackend.LOCAL_VOSK
 
-            if (useStreaming) {
+            if (!externalTranscriptMode && useStreaming) {
                 val engine = StreamingSttEngine(
                     context = this@CaptionForegroundService,
                     audioSource = currentAudioSource,
@@ -485,7 +505,7 @@ class CaptionForegroundService : Service() {
                 speechEngine = engine
                 observeEngineStatus(engine.status)
                 engine.start()
-            } else {
+            } else if (!externalTranscriptMode) {
                 when (currentAudioSource) {
                     AudioSource.SYSTEM -> {
                         val engine = SystemAudioEngine(
@@ -518,6 +538,45 @@ class CaptionForegroundService : Service() {
 
             showOverlay()
             observeOverlayUpdates()
+            drainPendingExternalTexts()
+        }
+    }
+
+    private fun drainPendingExternalTexts() {
+        while (true) {
+            val text = pendingExternalTexts.poll() ?: break
+            acceptExternalTranscript(text)
+        }
+    }
+
+    private fun acceptExternalTranscript(text: String) {
+        if (!captionSessionActive.get() || text.isBlank()) return
+        if (text == externalText) return
+        externalText = text
+        val newLineId = lineIdCounter.incrementAndGet()
+        val runtime = app.container.runtimeStore.update { state ->
+            val lines = recordTranscriptResult(
+                lines = state.transcriptLines,
+                originalText = text,
+                isFinal = false,
+                newLineId = newLineId
+            )
+            state.copy(
+                originalText = text,
+                transcriptLines = lines,
+                status = RecognitionStatus.PROCESSING,
+                lastError = null
+            )
+        }
+        val line = runtime.transcriptLines.lastOrNull()?.takeIf { it.originalText == text && !it.isFinal }
+        if (line != null) queueTranslation(text, line.id, line.revision, isFinal = false)
+        externalFinalizeJob?.cancel()
+        externalFinalizeJob = serviceScope.launch {
+            delay(EXTERNAL_LINE_BREAK_MS)
+            if (externalText == text && captionSessionActive.get()) {
+                finalizeOpenTranscriptOnSilence()
+                externalText = ""
+            }
         }
     }
 
@@ -745,6 +804,11 @@ class CaptionForegroundService : Service() {
     private fun stopFlow() {
         captionSessionActive.set(false)
         captionGeneration.incrementAndGet()
+        externalFinalizeJob?.cancel()
+        externalFinalizeJob = null
+        externalText = ""
+        pendingExternalTexts.clear()
+        externalTranscriptMode = false
         singingSegmentLineIds.clear()
         speakerClusterer?.reset()
         speakerClusterer = null
@@ -834,6 +898,8 @@ class CaptionForegroundService : Service() {
 
     companion object {
         const val ACTION_START = "caption.action.START"
+        const val ACTION_EXTERNAL_TEXT = "caption.action.EXTERNAL_TEXT"
+        const val EXTRA_EXTERNAL_TEXT = "caption.extra.EXTERNAL_TEXT"
         const val ACTION_STOP = "caption.action.STOP"
         const val ACTION_PAUSE_RESUME = "caption.action.PAUSE_RESUME"
         const val ACTION_TOGGLE_MINIMIZE = "caption.action.TOGGLE_MINIMIZE"
@@ -842,6 +908,7 @@ class CaptionForegroundService : Service() {
         private const val CHANNEL_ID = "caption_channel"
         private const val NOTIF_ID = 2001
         private const val TRANSLATE_DEBOUNCE_MS = 450L
+        private const val EXTERNAL_LINE_BREAK_MS = 2000L
         private const val NO_LINE_ID = -1L
         private const val MAX_PENDING_SINGING_LINES = 64
     }
