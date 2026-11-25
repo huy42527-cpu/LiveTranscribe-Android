@@ -74,6 +74,8 @@ class CaptionForegroundService : Service() {
     private val captionGeneration = java.util.concurrent.atomic.AtomicLong(0)
     private val singingSegmentLineIds = java.util.concurrent.ConcurrentHashMap<Long, Long>()
     @Volatile
+    private var silenceFinalizedText: String? = null
+    @Volatile
     private var bufferedLineId: Long = NO_LINE_ID
     @Volatile
     private var bufferedRevision: Long = 0L
@@ -265,7 +267,8 @@ class CaptionForegroundService : Service() {
                     matchThreshold = 0.80f,
                     minMatchMargin = 0.10f,
                     confirmationSegments = 2,
-                    maxSpeakers = 6
+                    maxSpeakers = 16,
+                    newSpeakerThreshold = 0.90f
                 )
             } else {
                 null
@@ -327,13 +330,18 @@ class CaptionForegroundService : Service() {
 
             val onSpeechResult = { result: SpeechResult ->
                 val transcript = result.text.trim()
+                val pendingSilenceText = silenceFinalizedText
+                silenceFinalizedText = null
+                val alreadyClosedBySilence = result.isFinal && transcript.isNotBlank() && transcript == pendingSilenceText
                 Log.d("CaptionService", "onSpeechResult final=${result.isFinal} chars=${transcript.length} embeddingPresent=${result.speakerEmbedding != null} embeddingSize=${result.speakerEmbedding?.size ?: 0} frames=${result.speakerFrames} singing=${result.isSinging} segmentId=${result.segmentId}")
                 val candidateId = lineIdCounter.incrementAndGet()
 
                 val updatedRuntime = app.container.runtimeStore.update { runtime ->
                     runtime.copy(
                         originalText = transcript,
-                        transcriptLines = recordTranscriptResult(
+                        transcriptLines = if (alreadyClosedBySilence && runtime.transcriptLines.lastOrNull()?.let { it.isFinal && it.originalText == transcript } == true) {
+                            runtime.transcriptLines
+                        } else recordTranscriptResult(
                             lines = runtime.transcriptLines,
                             originalText = transcript,
                             isFinal = result.isFinal,
@@ -464,6 +472,7 @@ class CaptionForegroundService : Service() {
                             }
                         }
                     },
+                    onSilenceBoundary = { finalizeOpenTranscriptOnSilence() },
                     speakerModelDir = speakerModelDir,
                     yamnetModelFile = yamnetModelFile
                 )
@@ -562,6 +571,23 @@ class CaptionForegroundService : Service() {
         fontId = if (hasPro) settings.overlayFontId else OverlayFontCatalog.FREE_FONT_ID
     )
 
+    /** Close a visible partial line after 2s silence without stopping the streaming recognizer. */
+    private fun finalizeOpenTranscriptOnSilence() {
+        val updated = app.container.runtimeStore.update { state ->
+            val last = state.transcriptLines.lastOrNull()
+            if (last == null || last.isFinal || last.originalText.isBlank()) state
+            else {
+                val closed = last.copy(isFinal = true, revision = last.revision + 1)
+                silenceFinalizedText = last.originalText
+                state.copy(transcriptLines = state.transcriptLines.dropLast(1) + closed)
+            }
+        }
+        val closedLine = updated.transcriptLines.lastOrNull()?.takeIf { it.isFinal && it.originalText == silenceFinalizedText }
+        if (closedLine != null) {
+            queueTranslation(closedLine.originalText, closedLine.id, closedLine.revision, isFinal = true)
+            Log.i("CaptionService", "transcriptLine closedBySilence id=" + closedLine.id + " pauseMs=2000")
+        }
+    }
     private fun queueTranslation(
         text: String,
         lineId: Long,
