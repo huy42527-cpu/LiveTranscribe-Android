@@ -23,17 +23,18 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
 
         val root = rootInActiveWindow ?: event.source ?: return
         val texts = ArrayList<String>(24)
-        collectVisibleText(root, texts, depth = 0, budget = NODE_BUDGET)
-        val snapshot = texts.asSequence()
+        val visited = intArrayOf(0)
+        collectVisibleText(root, texts, depth = 0, visited = visited)
+        val candidates = texts.asSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() && it.length <= MAX_NODE_TEXT }
             .distinct()
-            .joinToString("\n")
-        if (snapshot.isBlank() || snapshot == lastText) return
-
-        // Live Transcribe usually places the newest recognized utterance last.
-        val newest = snapshot.lineSequence().map { it.trim() }
-            .lastOrNull { it.isNotEmpty() } ?: return
+            .toList()
+        // Prefer a long non-button text node; short clickable labels are usually
+        // controls ("Settings", "Clear", etc.), not recognized speech.
+        val newest = candidates
+            .filter { it.length >= 2 }
+            .maxByOrNull { it.length } ?: return
         if (newest == lastText) return
         lastText = newest
 
@@ -52,13 +53,16 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         node: AccessibilityNodeInfo,
         out: MutableList<String>,
         depth: Int,
-        budget: Int
+        visited: IntArray
     ) {
-        if (depth > MAX_DEPTH || budget <= 0 || !node.isVisibleToUser) return
-        node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let(out::add)
+        if (depth > MAX_DEPTH || visited[0] >= NODE_BUDGET || !node.isVisibleToUser) return
+        visited[0]++
+        val text = node.text?.toString()?.trim().orEmpty()
+        if (text.isNotEmpty() && (!node.isClickable || text.length >= 24)) out.add(text)
         for (i in 0 until node.childCount.coerceAtMost(MAX_CHILDREN)) {
+            if (visited[0] >= NODE_BUDGET) break
             val child = runCatching { node.getChild(i) }.getOrNull() ?: continue
-            collectVisibleText(child, out, depth + 1, budget - 1)
+            collectVisibleText(child, out, depth + 1, visited)
         }
     }
 
