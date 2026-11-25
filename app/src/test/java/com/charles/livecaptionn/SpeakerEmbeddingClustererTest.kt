@@ -104,15 +104,17 @@ class SpeakerEmbeddingClustererTest {
         val confirmedB = c.observe(4, vector(35.0), 80)
         assertEquals("new-speaker-confirmed", confirmedB.diagnostic)
         assertEquals(2, c.speakerCount())
-        assertEquals(1, confirmedB.speakerAssignments[1L])
-        assertEquals(0, confirmedB.speakerAssignments[2L])
-        assertEquals(0, confirmedB.speakerAssignments[3L])
-        assertEquals(1, confirmedB.speakerAssignments[4L])
+        // Speaker order is based on first retained segment: B was first seen
+        // as a pending candidate, so B becomes index 0 and A shifts to index 1.
+        assertEquals(0, confirmedB.speakerAssignments[1L])
+        assertEquals(1, confirmedB.speakerAssignments[2L])
+        assertEquals(1, confirmedB.speakerAssignments[3L])
+        assertEquals(0, confirmedB.speakerAssignments[4L])
 
         val returningB = c.observe(5, vector(36.0), 80)
         assertEquals("matched-existing-speaker", returningB.diagnostic)
-        assertEquals(1, returningB.speakerIndex)
-        assertEquals(1, returningB.speakerAssignments[5L])
+        assertEquals(0, returningB.speakerIndex)
+        assertEquals(0, returningB.speakerAssignments[5L])
     }
 
     @Test fun ambiguousVectorBetweenTwoPendingCandidatesDoesNotMergeEither() {
