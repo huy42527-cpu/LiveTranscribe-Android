@@ -266,8 +266,8 @@ class CaptionForegroundService : Service() {
                     minFrames = 50,
                     matchThreshold = 0.80f,
                     minMatchMargin = 0.10f,
-                    confirmationSegments = 2,
-                    maxSpeakers = 16,
+                    confirmationSegments = 3,
+                    maxSpeakers = 32,
                     newSpeakerThreshold = 0.90f
                 )
             } else {
@@ -573,17 +573,18 @@ class CaptionForegroundService : Service() {
 
     /** Close a visible partial line after 2s silence without stopping the streaming recognizer. */
     private fun finalizeOpenTranscriptOnSilence() {
-        val updated = app.container.runtimeStore.update { state ->
+        var newlyClosed: CaptionRuntimeLine? = null
+        app.container.runtimeStore.update { state ->
             val last = state.transcriptLines.lastOrNull()
             if (last == null || last.isFinal || last.originalText.isBlank()) state
             else {
                 val closed = last.copy(isFinal = true, revision = last.revision + 1)
+                newlyClosed = closed
                 silenceFinalizedText = last.originalText
                 state.copy(transcriptLines = state.transcriptLines.dropLast(1) + closed)
             }
         }
-        val closedLine = updated.transcriptLines.lastOrNull()?.takeIf { it.isFinal && it.originalText == silenceFinalizedText }
-        if (closedLine != null) {
+        newlyClosed?.let { closedLine ->
             queueTranslation(closedLine.originalText, closedLine.id, closedLine.revision, isFinal = true)
             Log.i("CaptionService", "transcriptLine closedBySilence id=" + closedLine.id + " pauseMs=2000")
         }
