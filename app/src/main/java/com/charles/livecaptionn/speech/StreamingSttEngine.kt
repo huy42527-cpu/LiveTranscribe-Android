@@ -337,7 +337,7 @@ class StreamingSttEngine(
             if (isSilent) {
                 silentChunkStreak += 1
                 if (speechSinceSilenceBoundary) {
-                    silentSamplesSinceSpeech += read / 2L
+                    silentSamplesSinceSpeech += read.toLong() / 2L
                     if (silentSamplesSinceSpeech >= SILENCE_LINE_BREAK_SAMPLES) {
                         speechSinceSilenceBoundary = false
                         silentSamplesSinceSpeech = 0L
