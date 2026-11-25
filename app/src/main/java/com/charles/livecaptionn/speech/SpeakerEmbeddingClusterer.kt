@@ -16,7 +16,7 @@ internal class SpeakerEmbeddingClusterer(
     private val confirmationSegments: Int = 2,
     private val maxSpeakers: Int = 32,
     /** Higher evidence bar used only to confirm a brand-new speaker profile. */
-    private val newSpeakerThreshold: Float = 0.90f
+    private val newSpeakerThreshold: Float = matchThreshold.coerceAtLeast(0.90f)
 ) {
     data class Decision(
         /** Zero-based speaker index; convert to A/B/C only when displaying. */
