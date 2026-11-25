@@ -41,6 +41,15 @@ class SpeakerEmbeddingClustererTest {
     }
 
 
+    @Test fun newSpeakerRequiresThreeIndependentSegmentsInProductionConfig() {
+        val c = clusterer(confirmations = 3, maxSpeakers = 32)
+        assertNull(c.observe(100, floatArrayOf(1f, 0f), 120).speakerIndex)
+        assertNull(c.observe(101, floatArrayOf(0.999f, 0.01f), 120).speakerIndex)
+        assertEquals(0, c.speakerCount())
+        val confirmed = c.observe(102, floatArrayOf(0.998f, 0.02f), 120)
+        assertEquals(0, confirmed.speakerIndex)
+        assertEquals(listOf(100L, 101L, 102L), confirmed.confirmedSegmentIds)
+    }
     @Test fun staleCandidateExpiresAfterThirtySeconds() {
         val c = clusterer()
         assertNull(c.observe(1, floatArrayOf(1f, 0f), 80, nowMs = 0L).speakerIndex)
