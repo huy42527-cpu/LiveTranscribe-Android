@@ -101,18 +101,18 @@ class SpeakerEmbeddingClustererTest {
         assertEquals(0, c.observe(3, vector(1.0), 80).speakerIndex)
         assertEquals(1, c.speakerCount())
 
-        val pendingB = c.observe(4, vector(35.0), 80)
-        assertNull(pendingB.speakerIndex)
-        assertEquals("candidate-awaiting-confirmation", pendingB.diagnostic)
-
-        val confirmedB = c.observe(5, vector(36.0), 80)
+        val confirmedB = c.observe(4, vector(35.0), 80)
         assertEquals("new-speaker-confirmed", confirmedB.diagnostic)
         assertEquals(2, c.speakerCount())
-        assertEquals(1, confirmedB.speakerAssignments[2L])
-        assertEquals(1, confirmedB.speakerAssignments[3L])
-        assertEquals(0, confirmedB.speakerAssignments[1L])
-        assertEquals(0, confirmedB.speakerAssignments[4L])
-        assertEquals(0, confirmedB.speakerAssignments[5L])
+        assertEquals(1, confirmedB.speakerAssignments[1L])
+        assertEquals(0, confirmedB.speakerAssignments[2L])
+        assertEquals(0, confirmedB.speakerAssignments[3L])
+        assertEquals(1, confirmedB.speakerAssignments[4L])
+
+        val returningB = c.observe(5, vector(36.0), 80)
+        assertEquals("matched-existing-speaker", returningB.diagnostic)
+        assertEquals(1, returningB.speakerIndex)
+        assertEquals(1, returningB.speakerAssignments[5L])
     }
 
     @Test fun ambiguousVectorBetweenTwoPendingCandidatesDoesNotMergeEither() {
