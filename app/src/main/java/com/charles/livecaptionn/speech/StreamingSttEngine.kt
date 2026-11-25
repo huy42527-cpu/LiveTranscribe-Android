@@ -47,6 +47,8 @@ class StreamingSttEngine(
     private val onResult: (SpeechResult) -> Unit,
     private val onError: (String?) -> Unit = {},
     private val onSingingUpdate: (Long) -> Unit = {},
+    /** Called once after 2s of capture-time silence following speech; never gates STT. */
+    private val onSilenceBoundary: () -> Unit = {},
     private val speakerModelDir: File? = null,
     private val yamnetModelFile: File? = null
 ) : SpeechEngine {
@@ -256,6 +258,8 @@ class StreamingSttEngine(
         var silentChunkStreak = 0
         var lastEmittedPartial = ""
         var sawAnyAudioEver = false
+        var speechSinceSilenceBoundary = false
+        var silentSamplesSinceSpeech = 0L
         val yamnetRing = FloatArray(YamnetSingingClassifier.WINDOW_SAMPLES)
         var yamnetWriteIndex = 0
         var yamnetSampleCount = 0
@@ -332,6 +336,14 @@ class StreamingSttEngine(
 
             if (isSilent) {
                 silentChunkStreak += 1
+                if (speechSinceSilenceBoundary) {
+                    silentSamplesSinceSpeech += read / 2L
+                    if (silentSamplesSinceSpeech >= SILENCE_LINE_BREAK_SAMPLES) {
+                        speechSinceSilenceBoundary = false
+                        silentSamplesSinceSpeech = 0L
+                        onSilenceBoundary()
+                    }
+                }
                 // For system audio, flag when we've been silent for a long time so the
                 // user knows nothing is actually playing.
                 if (audioSource == AudioSource.SYSTEM &&
@@ -342,6 +354,8 @@ class StreamingSttEngine(
                 }
             } else {
                 silentChunkStreak = 0
+                speechSinceSilenceBoundary = true
+                silentSamplesSinceSpeech = 0L
                 sawAnyAudioEver = true
                 onError(null)
             }
