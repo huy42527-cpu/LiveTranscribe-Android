@@ -724,13 +724,6 @@ private fun AudioSourceCard(
                     modifier = Modifier.weight(1f)
                 )
                 ChoiceChip(
-                    label = "Live Caption",
-                    icon = Icons.Filled.Mic,
-                    selected = ui.settings.sttBackend == SttBackend.ANDROID_LIVE_CAPTION,
-                    onClick = { viewModel.updateSttBackend(SttBackend.ANDROID_LIVE_CAPTION) },
-                    modifier = Modifier.weight(1f)
-                )
-                ChoiceChip(
                     label = if (isSttUnsupported) t["Local Vosk"] + " 🔒" else t["Local Vosk"],
                     icon = if (isSttUnsupported) Icons.Filled.Lock else Icons.Filled.Mic,
                     selected = ui.settings.sttBackend == SttBackend.LOCAL_VOSK,
@@ -738,9 +731,32 @@ private fun AudioSourceCard(
                     modifier = Modifier.weight(1f)
                 )
             }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Receive Live Caption subtitles", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = if (ui.runtime.running) "Locked until this session ends"
+                        else "Use Android's on-screen captions as the speech source",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = ui.settings.sttBackend == SttBackend.ANDROID_LIVE_CAPTION,
+                    onCheckedChange = { enabled ->
+                        if (enabled) viewModel.updateSttBackend(SttBackend.ANDROID_LIVE_CAPTION)
+                        else viewModel.disableLiveCaption()
+                    },
+                    enabled = !ui.runtime.running
+                )
+            }
             if (ui.settings.sttBackend == SttBackend.ANDROID_LIVE_CAPTION) {
                 Text(
-                    text = "Uses Android Live Caption. Enable this app's accessibility service and turn on Japanese Live Caption in Android settings. This mode does not record audio through the app.",
+                    text = "Enable this app's Accessibility service and Japanese Live Caption in Android settings. This source reads caption text only; it does not record audio.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
