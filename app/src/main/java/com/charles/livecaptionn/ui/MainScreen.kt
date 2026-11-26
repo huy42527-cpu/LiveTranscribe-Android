@@ -252,8 +252,9 @@ fun MainScreen(
                 ui.voskModels.any {
                     it.installed && it.languageCode.equals(ui.settings.sourceLanguageCode, ignoreCase = true)
                 }
+            val usesLiveCaption = ui.settings.sttBackend == SttBackend.ANDROID_LIVE_CAPTION
             val permissionReady = ui.overlayPermissionGranted &&
-                (ui.settings.audioSource == AudioSource.SYSTEM || ui.micPermissionGranted)
+                (usesLiveCaption || ui.settings.audioSource == AudioSource.SYSTEM || ui.micPermissionGranted)
             // A Pro-only ML Kit language can stay selected after Pro lapses (or after a
             // restore). Starting then used to fail inside the service with the reason
             // hidden, so the Start button looked dead. Open the upgrade flow instead.
@@ -723,11 +724,25 @@ private fun AudioSourceCard(
                     modifier = Modifier.weight(1f)
                 )
                 ChoiceChip(
+                    label = "Live Caption",
+                    icon = Icons.Filled.Subtitles,
+                    selected = ui.settings.sttBackend == SttBackend.ANDROID_LIVE_CAPTION,
+                    onClick = { viewModel.updateSttBackend(SttBackend.ANDROID_LIVE_CAPTION) },
+                    modifier = Modifier.weight(1f)
+                )
+                ChoiceChip(
                     label = if (isSttUnsupported) t["Local Vosk"] + " 🔒" else t["Local Vosk"],
                     icon = if (isSttUnsupported) Icons.Filled.Lock else Icons.Filled.Mic,
                     selected = ui.settings.sttBackend == SttBackend.LOCAL_VOSK,
                     onClick = { viewModel.updateSttBackend(SttBackend.LOCAL_VOSK) },
                     modifier = Modifier.weight(1f)
+                )
+            }
+            if (ui.settings.sttBackend == SttBackend.ANDROID_LIVE_CAPTION) {
+                Text(
+                    text = "Uses Android Live Caption. Enable this app's accessibility service and turn on Japanese Live Caption in Android settings. This mode does not record audio through the app.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (ui.settings.sttBackend == SttBackend.LOCAL_VOSK) {
