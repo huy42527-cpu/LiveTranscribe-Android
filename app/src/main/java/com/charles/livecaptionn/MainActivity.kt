@@ -34,6 +34,7 @@ import com.charles.livecaptionn.review.ReviewPrompter
 import com.charles.livecaptionn.service.CaptionForegroundService
 import com.charles.livecaptionn.service.MediaProjectionHolder
 import com.charles.livecaptionn.settings.AudioSource
+import com.charles.livecaptionn.settings.SttBackend
 import com.charles.livecaptionn.ui.HistoryScreen
 import com.charles.livecaptionn.ui.MainScreen
 import com.charles.livecaptionn.ui.MainViewModel
@@ -166,6 +167,10 @@ class MainActivity : ComponentActivity() {
                 return@launch
             }
             val settings = app.container.settingsRepository.settingsFlow.first()
+            if (settings.sttBackend == SttBackend.ANDROID_LIVE_CAPTION) {
+                startCaptionService(AudioSource.MIC, liveCaption = true)
+                return@launch
+            }
             when (settings.audioSource) {
                 AudioSource.SYSTEM -> {
                     val mpManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -192,7 +197,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startCaptionService(audioSource: AudioSource) {
+    private fun startCaptionService(audioSource: AudioSource, liveCaption: Boolean = false) {
         val intent = Intent(this, CaptionForegroundService::class.java).apply {
             action = CaptionForegroundService.ACTION_START
             // Passed eagerly so the service can call startForeground() with the
@@ -200,6 +205,7 @@ class MainActivity : ComponentActivity() {
             // post-startForegroundService deadline (DataStore reads were racing
             // it on slow devices, crashing the app).
             putExtra(CaptionForegroundService.EXTRA_AUDIO_SOURCE, audioSource.name)
+            putExtra(CaptionForegroundService.EXTRA_LIVE_CAPTION, liveCaption)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
