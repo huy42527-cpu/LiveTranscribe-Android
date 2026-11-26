@@ -883,12 +883,15 @@ private class LiveCaptionAccessibilityEngine(
     private var running = false
     private var paused = false
     private var currentText = ""
+    private var finalizedBaseline = ""
     private var receiverRegistered = false
 
     private val finalizeLine = Runnable {
         val snapshot = currentText
         if (running && !paused && snapshot.isNotBlank()) {
             onResult(SpeechResult(snapshot, isFinal = true))
+            finalizedBaseline = (finalizedBaseline + " " + snapshot).trim().takeLast(1800)
+            currentText = ""
             statusMutable.value = RecognitionStatus.LISTENING
         }
     }
@@ -902,13 +905,16 @@ private class LiveCaptionAccessibilityEngine(
                 com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.EXTRA_TEXT
             )?.trim().orEmpty()
             if (snapshot.isBlank()) return
-            // Accessibility often reports a growing whole-caption snapshot.
-            // Strip the already-finalized prefix so the next line does not
-            // translate/repeat the previous sentence.
-            val text = if (finalizedBaseline.isNotBlank() &&
-                snapshot.startsWith(finalizedBaseline, ignoreCase = false)
-            ) snapshot.removePrefix(finalizedBaseline).trim()
-            else snapshot
+
+            // Android may report a growing whole-caption snapshot. Remove the
+            // already-finalized prefix to prevent replaying previous lines.
+            val text = when {
+                finalizedBaseline.isNotBlank() && snapshot.startsWith(finalizedBaseline) ->
+                    snapshot.removePrefix(finalizedBaseline).trim()
+                finalizedBaseline.isNotBlank() && snapshot.contains(finalizedBaseline) ->
+                    snapshot.substring(snapshot.indexOf(finalizedBaseline) + finalizedBaseline.length).trim()
+                else -> snapshot
+            }
             if (text.isBlank() || text == currentText) return
             currentText = text
             statusMutable.value = RecognitionStatus.PROCESSING
