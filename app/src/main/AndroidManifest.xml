@@ -70,6 +70,19 @@
         </activity>
 
         <service
+            android:name=".accessibility.GoogleLiveTranscribeAccessibilityService"
+            android:label="Live Caption text bridge"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/live_caption_accessibility_config" />
+        </service>
+
+        <service
             android:name=".service.CaptionForegroundService"
             android:enabled="true"
             android:exported="false"
