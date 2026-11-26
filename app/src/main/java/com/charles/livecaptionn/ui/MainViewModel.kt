@@ -34,6 +34,8 @@ class MainViewModel(
     private val container: AppContainer,
     application: Application
 ) : AndroidViewModel(application) {
+    private var previousNonLiveBackend: SttBackend = SttBackend.REMOTE_WHISPER
+
 
     private val mutableState = MutableStateFlow(
         MainUiState(installedFromPlayStore = detectPlayStoreInstall())
@@ -263,12 +265,20 @@ class MainViewModel(
     }
 
     fun updateSttBackend(backend: SttBackend) {
+        if (backend != SttBackend.ANDROID_LIVE_CAPTION) {
+            previousNonLiveBackend = backend
+        }
         val specs = mutableState.value.deviceSpecs
         if (specs?.tier == CompatibilityTier.UNSUPPORTED && backend == SttBackend.LOCAL_VOSK) {
             mutableState.value = mutableState.value.copy(showUnsupportedModal = true)
             return
         }
         viewModelScope.launch { container.settingsRepository.update { it.copy(sttBackend = backend) } }
+    }
+
+    fun disableLiveCaption() {
+        val fallback = previousNonLiveBackend
+        updateSttBackend(fallback)
     }
 
     fun updateTranslationBackend(backend: TranslationBackend) {
