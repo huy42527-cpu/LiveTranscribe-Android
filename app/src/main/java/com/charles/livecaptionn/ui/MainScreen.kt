@@ -2,6 +2,7 @@ package com.charles.livecaptionn.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -760,6 +761,15 @@ private fun AudioSourceCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                val accessibilityContext = LocalContext.current
+                OutlinedButton(
+                    onClick = {
+                        accessibilityContext.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Open Accessibility settings")
+                }
             }
             if (ui.settings.sttBackend == SttBackend.LOCAL_VOSK) {
                 val installed = ui.voskModels.count { it.installed }
