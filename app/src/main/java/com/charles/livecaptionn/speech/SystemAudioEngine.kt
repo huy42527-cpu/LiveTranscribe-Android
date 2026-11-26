@@ -147,6 +147,7 @@ class SystemAudioEngine(
             val chunkSeconds = when (sttBackend) {
                 SttBackend.LOCAL_VOSK -> LOCAL_CHUNK_SECONDS
                 SttBackend.REMOTE_WHISPER -> REMOTE_CHUNK_SECONDS
+                SttBackend.ANDROID_LIVE_CAPTION -> LOCAL_CHUNK_SECONDS
             }
             val chunkBytes = SAMPLE_RATE * 2 * chunkSeconds // 16-bit mono = 2 bytes/sample
             val readBuffer = ByteArray(4096)
@@ -206,6 +207,9 @@ class SystemAudioEngine(
                     }
                     SttBackend.LOCAL_VOSK -> {
                         localSttClient.transcribe(pcmData, SAMPLE_RATE, sourceLanguageCode)
+                    }
+                    SttBackend.ANDROID_LIVE_CAPTION -> {
+                        TranscribeOutcome("", "Live Caption is a text-only source, not an audio backend")
                     }
                 }
                 val err = outcome.errorMessage
