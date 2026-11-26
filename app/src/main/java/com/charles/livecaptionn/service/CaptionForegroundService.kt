@@ -7,11 +7,16 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -91,6 +96,7 @@ class CaptionForegroundService : Service() {
     )
 
     private var currentAudioSource = AudioSource.MIC
+    private var liveCaptionMode = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -127,6 +133,7 @@ class CaptionForegroundService : Service() {
                     ?.let { runCatching { AudioSource.valueOf(it) }.getOrNull() }
                     ?: AudioSource.MIC
                 currentAudioSource = audioSource
+                liveCaptionMode = intent.getBooleanExtra(EXTRA_LIVE_CAPTION, false)
                 if (enterForeground(audioSource)) startFlow()
             }
             ACTION_STOP -> stopFlow()
@@ -137,7 +144,7 @@ class CaptionForegroundService : Service() {
     }
 
     private fun enterForeground(audioSource: AudioSource): Boolean {
-        val wantsMicrophone = audioSource != AudioSource.SYSTEM
+        val wantsMicrophone = audioSource != AudioSource.SYSTEM && !liveCaptionMode
         val hasMicPermission = ContextCompat.checkSelfPermission(
             this, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
@@ -451,7 +458,15 @@ class CaptionForegroundService : Service() {
             val backend = settings.sttBackend
             val useStreaming = backend == SttBackend.LOCAL_VOSK
 
-            if (useStreaming) {
+            if (backend == SttBackend.ANDROID_LIVE_CAPTION) {
+                val engine = LiveCaptionAccessibilityEngine(
+                    context = this@CaptionForegroundService,
+                    onResult = onSpeechResult
+                )
+                speechEngine = engine
+                observeEngineStatus(engine.status)
+                engine.start()
+            } else if (useStreaming) {
                 val engine = StreamingSttEngine(
                     context = this@CaptionForegroundService,
                     audioSource = currentAudioSource,
@@ -838,11 +853,99 @@ class CaptionForegroundService : Service() {
         const val ACTION_PAUSE_RESUME = "caption.action.PAUSE_RESUME"
         const val ACTION_TOGGLE_MINIMIZE = "caption.action.TOGGLE_MINIMIZE"
         const val EXTRA_AUDIO_SOURCE = "caption.extra.AUDIO_SOURCE"
+        const val EXTRA_LIVE_CAPTION = "caption.extra.LIVE_CAPTION"
 
         private const val CHANNEL_ID = "caption_channel"
         private const val NOTIF_ID = 2001
         private const val TRANSLATE_DEBOUNCE_MS = 450L
         private const val NO_LINE_ID = -1L
         private const val MAX_PENDING_SINGING_LINES = 64
+    }
+}
+
+
+/**
+ * Receives Android Live Caption's accessibility text snapshots. The Android
+ * recognizer remains system-owned and continuous; this engine only forwards
+ * text and finalizes a visible line after 1s without a caption update.
+ */
+private class LiveCaptionAccessibilityEngine(
+    private val context: Context,
+    private val onResult: (SpeechResult) -> Unit
+) : SpeechEngine {
+    private val statusMutable = MutableStateFlow(RecognitionStatus.IDLE)
+    val status: StateFlow<RecognitionStatus> = statusMutable
+    private val handler = Handler(Looper.getMainLooper())
+    private var running = false
+    private var paused = false
+    private var currentText = ""
+    private var receiverRegistered = false
+
+    private val finalizeLine = Runnable {
+        val snapshot = currentText
+        if (running && !paused && snapshot.isNotBlank()) {
+            onResult(SpeechResult(snapshot, isFinal = true))
+            statusMutable.value = RecognitionStatus.LISTENING
+        }
+    }
+
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (!running || paused || intent?.action !=
+                com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.ACTION_LIVE_CAPTION_TEXT
+            ) return
+            val text = intent.getStringExtra(
+                com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.EXTRA_TEXT
+            )?.trim().orEmpty()
+            if (text.isBlank() || text == currentText) return
+            currentText = text
+            statusMutable.value = RecognitionStatus.PROCESSING
+            onResult(SpeechResult(text, isFinal = false))
+            handler.removeCallbacks(finalizeLine)
+            handler.postDelayed(finalizeLine, 1_000L)
+        }
+    }
+
+    override fun start() {
+        if (running) return
+        running = true
+        paused = false
+        currentText = ""
+        val filter = IntentFilter(
+            com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.ACTION_LIVE_CAPTION_TEXT
+        )
+        ContextCompat.registerReceiver(
+            context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        receiverRegistered = true
+        statusMutable.value = RecognitionStatus.LISTENING
+    }
+
+    override fun stop() {
+        running = false
+        paused = false
+        handler.removeCallbacks(finalizeLine)
+        if (receiverRegistered) {
+            runCatching { context.unregisterReceiver(receiver) }
+            receiverRegistered = false
+        }
+        currentText = ""
+        statusMutable.value = RecognitionStatus.IDLE
+    }
+
+    override fun pause() {
+        paused = true
+        handler.removeCallbacks(finalizeLine)
+        statusMutable.value = RecognitionStatus.PAUSED
+    }
+
+    override fun resume() {
+        if (!running) return
+        paused = false
+        if (currentText.isNotBlank()) {
+            onResult(SpeechResult(currentText, isFinal = false))
+            handler.postDelayed(finalizeLine, 1_000L)
+        }
+        statusMutable.value = RecognitionStatus.LISTENING
     }
 }
