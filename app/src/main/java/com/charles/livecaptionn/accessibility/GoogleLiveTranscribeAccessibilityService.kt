@@ -38,7 +38,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         }
 
         val snapshot = candidates.asSequence()
-            .filter { it.length <= 2000 && containsJapanese(it) }
+            .filter { it.length <= 20000 && containsJapanese(it) }
             .maxByOrNull { it.length }
             ?.trim().orEmpty()
         if (snapshot.isBlank()) {
@@ -71,7 +71,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         if (depth > 10 || visited[0] >= 250 || !node.isVisibleToUser) return
         visited[0]++
         node.text?.toString()?.trim()?.takeIf {
-            it.isNotEmpty() && it.length <= 2000 && containsJapanese(it)
+            it.isNotEmpty() && it.length <= 20000 && containsJapanese(it)
         }?.let(out::add)
         for (i in 0 until node.childCount.coerceAtMost(60)) {
             if (visited[0] >= 250) break
