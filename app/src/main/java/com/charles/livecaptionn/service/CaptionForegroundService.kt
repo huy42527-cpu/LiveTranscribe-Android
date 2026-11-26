@@ -208,9 +208,13 @@ class CaptionForegroundService : Service() {
             // If the activity sent the wrong audio source in the intent extra
             // (legacy intent, settings changed between launch and service start),
             // re-enter foreground with the correct service type.
-            if (settings.audioSource != currentAudioSource) {
+            if (!liveCaptionMode && settings.audioSource != currentAudioSource) {
                 currentAudioSource = settings.audioSource
                 if (!enterForeground(currentAudioSource)) return@launch
+            } else if (liveCaptionMode) {
+                // Live Caption is a text-only accessibility source, independent
+                // of the app's mic/system-audio capture preference.
+                currentAudioSource = AudioSource.MIC
             }
             val sttLanguageCode = settings.sourceLanguageCode.ifBlank { "en" }
             val localeForSpeechRec = LocaleMap.bcp47(sttLanguageCode)
@@ -894,9 +898,17 @@ private class LiveCaptionAccessibilityEngine(
             if (!running || paused || intent?.action !=
                 com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.ACTION_LIVE_CAPTION_TEXT
             ) return
-            val text = intent.getStringExtra(
+            val snapshot = intent.getStringExtra(
                 com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.EXTRA_TEXT
             )?.trim().orEmpty()
+            if (snapshot.isBlank()) return
+            // Accessibility often reports a growing whole-caption snapshot.
+            // Strip the already-finalized prefix so the next line does not
+            // translate/repeat the previous sentence.
+            val text = if (finalizedBaseline.isNotBlank() &&
+                snapshot.startsWith(finalizedBaseline, ignoreCase = false)
+            ) snapshot.removePrefix(finalizedBaseline).trim()
+            else snapshot
             if (text.isBlank() || text == currentText) return
             currentText = text
             statusMutable.value = RecognitionStatus.PROCESSING
@@ -911,6 +923,7 @@ private class LiveCaptionAccessibilityEngine(
         running = true
         paused = false
         currentText = ""
+        finalizedBaseline = ""
         val filter = IntentFilter(
             com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.ACTION_LIVE_CAPTION_TEXT
         )
@@ -930,6 +943,7 @@ private class LiveCaptionAccessibilityEngine(
             receiverRegistered = false
         }
         currentText = ""
+        finalizedBaseline = ""
         statusMutable.value = RecognitionStatus.IDLE
     }
 
