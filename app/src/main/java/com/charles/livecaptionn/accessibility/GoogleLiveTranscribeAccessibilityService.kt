@@ -7,8 +7,8 @@ import android.view.accessibility.AccessibilityNodeInfo
 
 /**
  * Temporary diagnostic probe for checking whether Android Live Caption exposes
- * Japanese transcript text through Accessibility. It only writes matching text
- * to local Logcat; it does not forward text into translation or record audio.
+ * transcript text through Accessibility. It writes relevant event text to local
+ * Logcat only; it does not forward text into translation or record audio.
  *
  * Disable this service after the test because Accessibility can observe UI text.
  */
@@ -35,8 +35,6 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
             }
         }
 
-        // Live Caption can be a separate system window, so inspect visible
-        // accessibility windows too; keep the traversal bounded.
         runCatching {
             windows.take(MAX_WINDOWS).forEach { window ->
                 window.root?.let { root ->
@@ -49,11 +47,17 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         }
 
         val matches = texts.filter(::containsJapanese).distinct().take(MAX_LOG_ITEMS)
-        if (matches.isEmpty()) return
         val joined = matches.joinToString(" | ").take(MAX_LOG_LENGTH)
-        if (joined == lastLogged) return
-        lastLogged = joined
-        Log.i(TAG, "CAPTION_PROBE package=$packageName event=${event.eventType} text=$joined")
+        val signature = "$packageName|"+event.eventType+"|"+event.className+"|"+joined
+        if (signature == lastLogged) return
+        lastLogged = signature
+
+        Log.i(
+            TAG,
+            "CAPTION_PROBE package=$packageName event="+event.eventType+
+                " class="+event.className+" text="+
+                (joined.ifEmpty { event.text?.joinToString(" ")?.take(500).orEmpty() })
+        )
     }
 
     private fun collectJapaneseText(
@@ -84,6 +88,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
     private fun isRelevantPackage(packageName: String): Boolean =
         packageName == TARGET_TRANSCRIBE_PACKAGE ||
             packageName == ANDROID_SYSTEM_UI_PACKAGE ||
+            packageName == ANDROID_SYSTEM_INTELLIGENCE_PACKAGE ||
             packageName.contains("systemui", ignoreCase = true)
 
     override fun onInterrupt() = Unit
@@ -93,6 +98,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         private const val TARGET_TRANSCRIBE_PACKAGE =
             "com.google.audio.hearing.visualization.accessibility.scribe"
         private const val ANDROID_SYSTEM_UI_PACKAGE = "com.android.systemui"
+        private const val ANDROID_SYSTEM_INTELLIGENCE_PACKAGE = "com.google.android.as"
         private const val MAX_WINDOWS = 8
         private const val MAX_LOG_ITEMS = 12
         private const val MAX_LOG_LENGTH = 3000
