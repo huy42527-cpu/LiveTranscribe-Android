@@ -41,7 +41,18 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
             .filter { it.length <= 2000 && containsJapanese(it) }
             .maxByOrNull { it.length }
             ?.trim().orEmpty()
-        if (snapshot.isBlank() || snapshot == lastSnapshot) return
+        if (snapshot.isBlank()) {
+            if (lastSnapshot.isNotBlank()) {
+                lastSnapshot = ""
+                sendBroadcast(
+                    Intent(ACTION_LIVE_CAPTION_TEXT)
+                        .setPackage(packageName)
+                        .putExtra(EXTRA_TEXT, "")
+                )
+            }
+            return
+        }
+        if (snapshot == lastSnapshot) return
         lastSnapshot = snapshot
 
         sendBroadcast(
