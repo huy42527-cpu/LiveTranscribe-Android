@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Lets AndroidSpeechRecognizerManager check which recognition services are
@@ -86,7 +87,11 @@
             android:name=".service.CaptionForegroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="microphone|mediaProjection" />
+            android:foregroundServiceType="microphone|mediaProjection|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Receive Live Caption text through the enabled accessibility service and translate captions in an overlay." />
+        </service>
     </application>
 
 </manifest>
