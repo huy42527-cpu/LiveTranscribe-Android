@@ -725,7 +725,7 @@ private fun AudioSourceCard(
                 )
                 ChoiceChip(
                     label = "Live Caption",
-                    icon = Icons.Filled.Subtitles,
+                    icon = Icons.Filled.Mic,
                     selected = ui.settings.sttBackend == SttBackend.ANDROID_LIVE_CAPTION,
                     onClick = { viewModel.updateSttBackend(SttBackend.ANDROID_LIVE_CAPTION) },
                     modifier = Modifier.weight(1f)
