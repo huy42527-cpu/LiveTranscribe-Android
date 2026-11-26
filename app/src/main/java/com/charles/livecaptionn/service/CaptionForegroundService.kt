@@ -155,6 +155,7 @@ class CaptionForegroundService : Service() {
         // mid-session — fail closed instead of crashing with the OS exception.
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             when {
+                liveCaptionMode -> ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                 audioSource == AudioSource.SYSTEM -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
                 wantsMicrophone && hasMicPermission -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 else -> 0
