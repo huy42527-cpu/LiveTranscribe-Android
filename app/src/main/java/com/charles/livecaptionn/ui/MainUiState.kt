@@ -70,7 +70,8 @@ data class MainUiState(
                 // Remote Whisper (system audio) and AndroidSpeechRecognizer
                 // (mic) can in principle handle any locale the translation
                 // engine supports.
-                com.charles.livecaptionn.settings.SttBackend.REMOTE_WHISPER ->
+                com.charles.livecaptionn.settings.SttBackend.REMOTE_WHISPER,
+                com.charles.livecaptionn.settings.SttBackend.ANDROID_LIVE_CAPTION ->
                     translationLanguages()
             }
         }
