@@ -884,13 +884,14 @@ private class LiveCaptionAccessibilityEngine(
     private var paused = false
     private var currentText = ""
     private var finalizedBaseline = ""
+    private var lastRawSnapshot = ""
     private var receiverRegistered = false
 
     private val finalizeLine = Runnable {
         val snapshot = currentText
         if (running && !paused && snapshot.isNotBlank()) {
             onResult(SpeechResult(snapshot, isFinal = true))
-            finalizedBaseline = (finalizedBaseline + " " + snapshot).trim().takeLast(1800)
+            finalizedBaseline = lastRawSnapshot
             currentText = ""
             statusMutable.value = RecognitionStatus.LISTENING
         }
@@ -904,7 +905,18 @@ private class LiveCaptionAccessibilityEngine(
             val snapshot = intent.getStringExtra(
                 com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.EXTRA_TEXT
             )?.trim().orEmpty()
-            if (snapshot.isBlank()) return
+            if (snapshot.isBlank()) {
+                handler.removeCallbacks(finalizeLine)
+                if (currentText.isNotBlank()) {
+                    onResult(SpeechResult(currentText, isFinal = true))
+                    currentText = ""
+                }
+                finalizedBaseline = ""
+                lastRawSnapshot = ""
+                statusMutable.value = RecognitionStatus.LISTENING
+                return
+            }
+            lastRawSnapshot = snapshot
 
             // Android may report a growing whole-caption snapshot. Remove the
             // already-finalized prefix to prevent replaying previous lines.
@@ -930,6 +942,7 @@ private class LiveCaptionAccessibilityEngine(
         paused = false
         currentText = ""
         finalizedBaseline = ""
+        lastRawSnapshot = ""
         val filter = IntentFilter(
             com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.ACTION_LIVE_CAPTION_TEXT
         )
@@ -950,6 +963,7 @@ private class LiveCaptionAccessibilityEngine(
         }
         currentText = ""
         finalizedBaseline = ""
+        lastRawSnapshot = ""
         statusMutable.value = RecognitionStatus.IDLE
     }
 
