@@ -49,7 +49,7 @@ class CaptionSnapshotCandidateSelectorTest {
                 sourceCandidates = setOf("新しい字幕です"),
                 eventTextCandidates = emptySet(),
                 windowCandidates = setOf("前の字幕はかなり長く残っている古い文章です"),
-                previousSnapshot = "前の字幕はかなり長く残っている"
+                previousSnapshot = "前の字幕はかなり長く残っている古い文章です"
             )
         )
     }
