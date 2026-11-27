@@ -55,7 +55,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.sample
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -311,43 +310,50 @@ class CaptionForegroundService : Service() {
                 }
             }
 
+            // Final captions have their own collector so they don't wait for
+            // the partial-caption sampling interval or an in-flight partial.
+            // The queue is drained sequentially to bound final translation work.
             launch(Dispatchers.IO) {
-                merge(
-                    translateRequests.sample(PARTIAL_TRANSLATE_INTERVAL_MS),
-                    finalTranslateRequests
-                )
-                    .collect {
-                        while (true) {
-                            val final = pendingFinalTranslations.poll() ?: break
-                            try {
-                                translateSnapshot(final)
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                Log.w("CaptionService", "Final translation failed (${error.javaClass.simpleName}).")
-                                finishTranslationWithoutResult(final)
-                            }
-                        }
-                        val partial = synchronized(this@CaptionForegroundService) {
-                            TranslationRequest(
-                                bufferedText,
-                                bufferedLineId,
-                                bufferedRevision,
-                                historyOnNextTranslate
-                            )
-                                .also { historyOnNextTranslate = false }
-                        }
-                        if (partial.text.isNotBlank()) {
-                            try {
-                                translateSnapshot(partial)
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                Log.w("CaptionService", "Partial translation failed (${error.javaClass.simpleName}).")
-                                finishTranslationWithoutResult(partial)
-                            }
+                finalTranslateRequests.collect {
+                    while (true) {
+                        val final = pendingFinalTranslations.poll() ?: break
+                        try {
+                            translateSnapshot(final)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Log.w("CaptionService", "Final translation failed (${error.javaClass.simpleName}).")
+                            finishTranslationWithoutResult(final)
                         }
                     }
+                }
+            }
+
+            // Partials are sampled periodically and only the newest buffered
+            // snapshot is translated. Avoid translating the exact same snapshot
+            // repeatedly when sample() fires without any new caption text.
+            launch(Dispatchers.IO) {
+                var lastPartial: TranslationRequest? = null
+                translateRequests.sample(PARTIAL_TRANSLATE_INTERVAL_MS).collect {
+                    val partial = synchronized(this@CaptionForegroundService) {
+                        TranslationRequest(
+                            bufferedText,
+                            bufferedLineId,
+                            bufferedRevision,
+                            historyOnNextTranslate
+                        ).also { historyOnNextTranslate = false }
+                    }
+                    if (partial.text.isBlank() || partial == lastPartial) return@collect
+                    lastPartial = partial
+                    try {
+                        translateSnapshot(partial)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w("CaptionService", "Partial translation failed (${error.javaClass.simpleName}).")
+                        finishTranslationWithoutResult(partial)
+                    }
+                }
             }
 
             val onSpeechResult = { result: SpeechResult ->
