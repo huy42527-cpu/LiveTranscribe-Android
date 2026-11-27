@@ -40,8 +40,8 @@ class GoogleWebTranslationResponseParserTest {
         val json = """["Xin chào", "こんにちは", null, 1]"""
 
         assertEquals(
-            "Xin chàoこんにちは",
-            GoogleWebTranslationResponseParser.parse(json)
+            "Xin chào こんにちは",
+            GoogleWebTranslationResponseParser.parse(json, "en")
         )
     }
 
