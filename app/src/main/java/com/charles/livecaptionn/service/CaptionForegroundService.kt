@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -88,7 +89,7 @@ class CaptionForegroundService : Service() {
     private var historyOnNextTranslate = false
     private val pendingFinalTranslations = ConcurrentLinkedQueue<TranslationRequest>()
 
-    /** Mic partials arrive faster than 400ms; cancel+restart jobs never finish. Debounce coalesces to one translate. */
+    /** Periodically translate the latest changed partial; sampling avoids waiting for silence. */
     private val translateRequests = MutableSharedFlow<Unit>(
         replay = 0,
         extraBufferCapacity = 1,
@@ -305,7 +306,7 @@ class CaptionForegroundService : Service() {
 
             launch(Dispatchers.IO) {
                 translateRequests
-                    .debounce(TRANSLATE_DEBOUNCE_MS)
+                    .sample(PARTIAL_TRANSLATE_INTERVAL_MS)
                     .collect {
                         while (true) {
                             val final = pendingFinalTranslations.poll() ?: break
@@ -862,7 +863,7 @@ class CaptionForegroundService : Service() {
 
         private const val CHANNEL_ID = "caption_channel"
         private const val NOTIF_ID = 2001
-        private const val TRANSLATE_DEBOUNCE_MS = 450L
+        private const val PARTIAL_TRANSLATE_INTERVAL_MS = 800L
         private const val NO_LINE_ID = -1L
         private const val MAX_PENDING_SINGING_LINES = 64
     }
