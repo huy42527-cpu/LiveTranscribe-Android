@@ -8,9 +8,9 @@ import kotlinx.coroutines.flow.first
 /**
  * Dispatches each translation call to the backend selected in user settings.
  *
- * Caches the active backend so we don't read settings flow on every call.
- * Settings changes are rare relative to translation call frequency, so a
- * lazy fresh-on-mismatch strategy avoids coroutine overhead per call.
+ * The selected delegate is resolved per request. This avoids a shared mutable
+ * backend/delegate cache becoming inconsistent when partial and final
+ * translations run concurrently while settings change.
  */
 class RoutingTranslationRepository(
     private val settingsRepository: SettingsRepository,
@@ -19,9 +19,6 @@ class RoutingTranslationRepository(
     private val googleWeb: TranslationRepository
 ) : TranslationRepository {
 
-    private var cachedBackend: TranslationBackend? = null
-    private var cachedDelegate: TranslationRepository? = null
-
     override suspend fun translate(
         text: String,
         sourceCode: String,
@@ -29,7 +26,7 @@ class RoutingTranslationRepository(
         autoDetect: Boolean
     ): String {
         val backend = settingsRepository.settingsFlow.first().translationBackend
-        val delegate = activeDelegate(backend)
+        val delegate = delegateFor(backend)
         logger.fine("Dispatching translation: backend=$backend, source=$sourceCode, target=$targetCode, autoDetect=$autoDetect.")
         return try {
             delegate.translate(text, sourceCode, targetCode, autoDetect).also { result ->
@@ -44,23 +41,15 @@ class RoutingTranslationRepository(
     override suspend fun prewarm(sourceCode: String, targetCode: String) {
         val backend = settingsRepository.settingsFlow.first().translationBackend
         logger.fine("Prewarming translation backend: backend=$backend.")
-        activeDelegate(backend).prewarm(sourceCode, targetCode)
+        delegateFor(backend).prewarm(sourceCode, targetCode)
     }
 
-    private suspend fun activeDelegate(backend: TranslationBackend): TranslationRepository {
-        if (cachedBackend == backend && cachedDelegate != null) {
-            return cachedDelegate!!
-        }
-        val delegate = when (backend) {
+    private fun delegateFor(backend: TranslationBackend): TranslationRepository =
+        when (backend) {
             TranslationBackend.ML_KIT -> mlKit
             TranslationBackend.LIBRE_TRANSLATE -> libre
             TranslationBackend.GOOGLE_WEB -> googleWeb
         }
-        cachedBackend = backend
-        cachedDelegate = delegate
-        logger.fine("Active translation backend changed: backend=$backend.")
-        return delegate
-    }
 
     override fun close() {
         mlKit.close()
