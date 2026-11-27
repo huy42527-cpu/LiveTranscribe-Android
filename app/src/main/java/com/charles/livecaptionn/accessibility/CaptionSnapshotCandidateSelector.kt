@@ -59,7 +59,7 @@ internal object CaptionSnapshotCandidateSelector {
         return false
     }
 
-    private fun isKnownStatusMessage(value: String): Boolean {
+    internal fun isKnownStatusMessage(value: String): Boolean {
         // Android Live Caption can expose this status as if it were recognized speech.
         // Filter only the exact status phrase; never gate recognition on silence.
         val normalized = value.filterNot { it.isWhitespace() || it in "[]【】「」『』()（）" }
