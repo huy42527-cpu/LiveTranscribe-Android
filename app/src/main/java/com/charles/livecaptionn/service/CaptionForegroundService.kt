@@ -919,15 +919,8 @@ private class LiveCaptionAccessibilityEngine(
             }
             lastRawSnapshot = snapshot
 
-            // Android may report a growing whole-caption snapshot. Remove the
-            // already-finalized prefix to prevent replaying previous lines.
-            val text = when {
-                finalizedBaseline.isNotBlank() && snapshot.startsWith(finalizedBaseline) ->
-                    snapshot.removePrefix(finalizedBaseline).trim()
-                finalizedBaseline.isNotBlank() && snapshot.contains(finalizedBaseline) ->
-                    snapshot.substring(snapshot.indexOf(finalizedBaseline) + finalizedBaseline.length).trim()
-                else -> snapshot
-            }
+            val text = com.charles.livecaptionn.speech.LiveCaptionSnapshotText
+                .unfinalizedText(snapshot, finalizedBaseline)
             if (text.isBlank() || text == currentText) return
             currentText = text
             statusMutable.value = RecognitionStatus.PROCESSING
