@@ -17,7 +17,7 @@ internal object CaptionSnapshotCandidateSelector {
         fun valid(values: Set<String>, sourcePriority: Int): List<Candidate> =
             values.asSequence()
                 .map(String::trim)
-                .filter { it.isNotEmpty() && it.length <= 20000 && containsJapanese(it) }
+                .filter { it.isNotEmpty() && it.length <= 20000 && containsJapanese(it) && !isKnownStatusMessage(it) }
                 .map { Candidate(it, sourcePriority) }
                 .toList()
 
@@ -57,6 +57,13 @@ internal object CaptionSnapshotCandidateSelector {
             ) return true
         }
         return false
+    }
+
+    private fun isKnownStatusMessage(value: String): Boolean {
+        // Android Live Caption can expose this status as if it were recognized speech.
+        // Filter only the exact status phrase; never gate recognition on silence.
+        val normalized = value.filterNot { it.isWhitespace() || it in "[]【】「」『』()（）" }
+        return normalized == "日本語の音声が検出されませんでした"
     }
 
     private fun containsJapanese(value: String): Boolean = value.any {
