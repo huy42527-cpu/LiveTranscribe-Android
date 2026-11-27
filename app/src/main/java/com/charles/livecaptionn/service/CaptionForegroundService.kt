@@ -924,14 +924,9 @@ private class LiveCaptionAccessibilityEngine(
                 com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.EXTRA_TEXT
             )?.trim().orEmpty()
             if (snapshot.isBlank()) {
-                handler.removeCallbacks(finalizeLine)
-                if (currentText.isNotBlank()) {
-                    onResult(SpeechResult(currentText, isFinal = true))
-                    currentText = ""
-                }
-                finalizedBaseline = ""
-                lastRawSnapshot = ""
-                statusMutable.value = RecognitionStatus.LISTENING
+                // An empty accessibility snapshot is not a new caption revision.
+                // Keep the current line and its 1s inactivity timer; the timer
+                // closes the line if no nonblank caption update arrives.
                 return
             }
             lastRawSnapshot = snapshot
