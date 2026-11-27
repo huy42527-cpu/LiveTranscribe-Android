@@ -18,12 +18,28 @@ internal object GoogleWebTranslationResponseParser {
 
         fun appendSegment(segment: String) {
             if (segment.isEmpty()) return
-            if (translated.isNotEmpty() && needsWordSpaces &&
-                !translated.last().isWhitespace() && !segment.first().isWhitespace()
+            val previous = translated.lastOrNull()
+            val next = segment.first()
+            if (previous != null && needsWordSpaces &&
+                !previous.isWhitespace() && !next.isWhitespace() &&
+                !isClosingPunctuation(next) && !isOpeningPunctuation(previous)
             ) {
                 translated.append(' ')
             }
             translated.append(segment)
+        }
+
+        fun isClosingPunctuation(char: Char): Boolean = when (Character.getType(char)) {
+            Character.END_PUNCTUATION.toInt(),
+            Character.FINAL_QUOTE_PUNCTUATION.toInt(),
+            Character.OTHER_PUNCTUATION.toInt() -> true
+            else -> false
+        }
+
+        fun isOpeningPunctuation(char: Char): Boolean = when (Character.getType(char)) {
+            Character.START_PUNCTUATION.toInt(),
+            Character.INITIAL_QUOTE_PUNCTUATION.toInt() -> true
+            else -> false
         }
 
         reader.beginArray()
