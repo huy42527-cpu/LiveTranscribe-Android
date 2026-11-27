@@ -29,19 +29,6 @@ internal object GoogleWebTranslationResponseParser {
             translated.append(segment)
         }
 
-        fun isClosingPunctuation(char: Char): Boolean = when (Character.getType(char)) {
-            Character.END_PUNCTUATION.toInt(),
-            Character.FINAL_QUOTE_PUNCTUATION.toInt(),
-            Character.OTHER_PUNCTUATION.toInt() -> true
-            else -> false
-        }
-
-        fun isOpeningPunctuation(char: Char): Boolean = when (Character.getType(char)) {
-            Character.START_PUNCTUATION.toInt(),
-            Character.INITIAL_QUOTE_PUNCTUATION.toInt() -> true
-            else -> false
-        }
-
         reader.beginArray()
         while (reader.hasNext()) {
             when (reader.peek()) {
@@ -59,6 +46,19 @@ internal object GoogleWebTranslationResponseParser {
         }
         reader.endArray()
         return translated.toString().trim()
+    }
+
+    private fun isClosingPunctuation(char: Char): Boolean = when (Character.getType(char)) {
+        Character.END_PUNCTUATION.toInt(),
+        Character.FINAL_QUOTE_PUNCTUATION.toInt(),
+        Character.OTHER_PUNCTUATION.toInt() -> true
+        else -> false
+    }
+
+    private fun isOpeningPunctuation(char: Char): Boolean = when (Character.getType(char)) {
+        Character.START_PUNCTUATION.toInt(),
+        Character.INITIAL_QUOTE_PUNCTUATION.toInt() -> true
+        else -> false
     }
 
     private val LANGUAGES_WITHOUT_WORD_SPACES = setOf(
