@@ -26,6 +26,16 @@ class GoogleWebTranslationResponseParserTest {
     }
 
     @Test
+    fun doesNotAddSpaceBeforePunctuation() {
+        val json = """[["Xin chào"], [","], ["bạn"], ["!"]]"""
+
+        assertEquals(
+            "Xin chào, bạn!",
+            GoogleWebTranslationResponseParser.parse(json, "vi")
+        )
+    }
+
+    @Test
     fun joinsJapaneseSegmentsWithoutAddingSpaces() {
         val json = """[["こんにちは"], ["世界"]]"""
 
