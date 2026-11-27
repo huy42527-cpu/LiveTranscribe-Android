@@ -55,6 +55,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -90,6 +91,12 @@ class CaptionForegroundService : Service() {
     private val pendingFinalTranslations = ConcurrentLinkedQueue<TranslationRequest>()
 
     /** Periodically translate the latest changed partial; sampling avoids waiting for silence. */
+    private val finalTranslateRequests = MutableSharedFlow<Unit>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
     private val translateRequests = MutableSharedFlow<Unit>(
         replay = 0,
         extraBufferCapacity = 1,
@@ -305,8 +312,10 @@ class CaptionForegroundService : Service() {
             }
 
             launch(Dispatchers.IO) {
-                translateRequests
-                    .sample(PARTIAL_TRANSLATE_INTERVAL_MS)
+                merge(
+                    translateRequests.sample(PARTIAL_TRANSLATE_INTERVAL_MS),
+                    finalTranslateRequests
+                )
                     .collect {
                         while (true) {
                             val final = pendingFinalTranslations.poll() ?: break
@@ -639,7 +648,8 @@ class CaptionForegroundService : Service() {
                 historyOnNextTranslate = false
             }
         }
-        translateRequests.tryEmit(Unit)
+        if (isFinal) finalTranslateRequests.tryEmit(Unit)
+        else translateRequests.tryEmit(Unit)
     }
 
     private suspend fun translateSnapshot(request: TranslationRequest) {
