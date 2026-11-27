@@ -89,4 +89,15 @@ class CaptionSnapshotCandidateSelectorTest {
         )
     }
 
+    @Test
+    fun statusDetectorNormalizesWhitespaceAndDecorativeBrackets() {
+        assertEquals(
+            true,
+            CaptionSnapshotCandidateSelector.isKnownStatusMessage("【日本語の音声が検出されませんでした】")
+        )
+        assertEquals(
+            false,
+            CaptionSnapshotCandidateSelector.isKnownStatusMessage("日本語の音声が検出されませんでした。今日は晴れです")
+        )
+    }
 }
