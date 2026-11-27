@@ -198,7 +198,8 @@ class CaptionForegroundService : Service() {
                 running = true,
                 paused = false,
                 status = RecognitionStatus.PROCESSING,
-                lastError = null
+                lastError = null,
+                liveCaptionStatus = null
             )
         }
         if (!Settings.canDrawOverlays(this)) {
@@ -482,7 +483,10 @@ class CaptionForegroundService : Service() {
             if (backend == SttBackend.ANDROID_LIVE_CAPTION) {
                 val engine = LiveCaptionAccessibilityEngine(
                     context = this@CaptionForegroundService,
-                    onResult = onSpeechResult
+                    onResult = onSpeechResult,
+                    onSystemStatus = { systemStatus ->
+                        app.container.runtimeStore.update { it.copy(liveCaptionStatus = systemStatus) }
+                    }
                 )
                 speechEngine = engine
                 observeEngineStatus(engine.status)
@@ -893,7 +897,8 @@ class CaptionForegroundService : Service() {
  */
 private class LiveCaptionAccessibilityEngine(
     private val context: Context,
-    private val onResult: (SpeechResult) -> Unit
+    private val onResult: (SpeechResult) -> Unit,
+    private val onSystemStatus: (String?) -> Unit
 ) : SpeechEngine {
     private val statusMutable = MutableStateFlow(RecognitionStatus.IDLE)
     val status: StateFlow<RecognitionStatus> = statusMutable
@@ -917,11 +922,15 @@ private class LiveCaptionAccessibilityEngine(
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (!running || paused || intent?.action !=
-                com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.ACTION_LIVE_CAPTION_TEXT
-            ) return
+            if (!running || intent == null) return
+            val accessibility = com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService
+            if (intent.action == accessibility.ACTION_LIVE_CAPTION_STATUS) {
+                onSystemStatus(intent.getStringExtra(accessibility.EXTRA_STATUS)?.trim()?.takeIf(String::isNotEmpty))
+                return
+            }
+            if (paused || intent.action != accessibility.ACTION_LIVE_CAPTION_TEXT) return
             val snapshot = intent.getStringExtra(
-                com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.EXTRA_TEXT
+                accessibility.EXTRA_TEXT
             )?.trim().orEmpty()
             if (snapshot.isBlank()) {
                 // An empty accessibility snapshot is not a new caption revision.
@@ -949,12 +958,14 @@ private class LiveCaptionAccessibilityEngine(
         currentText = ""
         finalizedBaseline = ""
         lastRawSnapshot = ""
-        val filter = IntentFilter(
-            com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService.ACTION_LIVE_CAPTION_TEXT
-        )
+        val accessibility = com.charles.livecaptionn.accessibility.GoogleLiveTranscribeAccessibilityService
+        val filter = IntentFilter(accessibility.ACTION_LIVE_CAPTION_TEXT).apply {
+            addAction(accessibility.ACTION_LIVE_CAPTION_STATUS)
+        }
         ContextCompat.registerReceiver(
             context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        onSystemStatus(null)
         receiverRegistered = true
         statusMutable.value = RecognitionStatus.LISTENING
     }
@@ -970,6 +981,7 @@ private class LiveCaptionAccessibilityEngine(
         currentText = ""
         finalizedBaseline = ""
         lastRawSnapshot = ""
+        onSystemStatus(null)
         statusMutable.value = RecognitionStatus.IDLE
     }
 
