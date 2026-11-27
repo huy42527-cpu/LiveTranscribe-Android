@@ -29,6 +29,32 @@ class CaptionSnapshotCandidateSelectorTest {
     }
 
     @Test
+    fun changedWindowSnapshotWinsOverIdenticalStaleEventSource() {
+        assertEquals(
+            "今の字幕です更新中",
+            CaptionSnapshotCandidateSelector.choose(
+                sourceCandidates = setOf("今の字幕です"),
+                eventTextCandidates = emptySet(),
+                windowCandidates = setOf("今の字幕です更新中"),
+                previousSnapshot = "今の字幕です"
+            )
+        )
+    }
+
+    @Test
+    fun changedEventSourceWinsOverLongerStaleWindowNode() {
+        assertEquals(
+            "新しい字幕です",
+            CaptionSnapshotCandidateSelector.choose(
+                sourceCandidates = setOf("新しい字幕です"),
+                eventTextCandidates = emptySet(),
+                windowCandidates = setOf("前の字幕はかなり長く残っている古い文章です"),
+                previousSnapshot = "前の字幕はかなり長く残っている"
+            )
+        )
+    }
+
+    @Test
     fun windowScanIsOnlyFallback() {
         assertEquals(
             "字幕の予備",
