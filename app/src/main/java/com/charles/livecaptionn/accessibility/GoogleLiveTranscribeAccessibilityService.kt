@@ -12,6 +12,7 @@ import android.view.accessibility.AccessibilityNodeInfo
  */
 class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
     private var lastSnapshot = ""
+    private var lastSystemStatus = ""
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || !isRelevant(event.packageName?.toString().orEmpty())) return
@@ -46,6 +47,21 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
             }
         }
 
+        // Keep exact system diagnostic messages on a separate channel. They are
+        // useful for troubleshooting, but must never enter the transcript/translator.
+        val allCandidates = sourceCandidates + eventTextCandidates + windowCandidates
+        val systemStatus = allCandidates.firstOrNull {
+            CaptionSnapshotCandidateSelector.isKnownStatusMessage(it)
+        }.orEmpty()
+        if (systemStatus != lastSystemStatus) {
+            lastSystemStatus = systemStatus
+            sendBroadcast(
+                Intent(ACTION_LIVE_CAPTION_STATUS)
+                    .setPackage(packageName)
+                    .putExtra(EXTRA_STATUS, systemStatus)
+            )
+        }
+
         val snapshot = CaptionSnapshotCandidateSelector.choose(
             sourceCandidates = sourceCandidates,
             eventTextCandidates = eventTextCandidates,
@@ -53,6 +69,8 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
             previousSnapshot = lastSnapshot
         )
         if (snapshot.isBlank()) {
+            // A status-only accessibility update is not a caption-clear event.
+            if (systemStatus.isNotBlank()) return
             if (lastSnapshot.isNotBlank()) {
                 lastSnapshot = ""
                 sendBroadcast(
@@ -107,5 +125,8 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         const val ACTION_LIVE_CAPTION_TEXT =
             "com.charles.livecaptionn.action.LIVE_CAPTION_TEXT"
         const val EXTRA_TEXT = "live_caption_text"
+        const val ACTION_LIVE_CAPTION_STATUS =
+            "com.charles.livecaptionn.action.LIVE_CAPTION_STATUS"
+        const val EXTRA_STATUS = "live_caption_status"
     }
 }
