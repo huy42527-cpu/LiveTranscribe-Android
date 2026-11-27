@@ -605,7 +605,12 @@ class CaptionForegroundService : Service() {
         translatedText = runtime.translatedText.ifBlank { runtime.originalText },
         transcriptText = overlayTranscriptText(runtime),
         status = runtime.status,
-        statusDetail = runtime.lastError,
+        statusDetail = runtime.lastError ?: runtime.liveCaptionStatus?.let { status ->
+            val normalized = status.filterNot { it.isWhitespace() || it in "[]【】「」『』()（）" }
+            if (normalized == "日本語の音声が検出されませんでした") {
+                "Live Caption: Không phát hiện được âm thanh tiếng Nhật (hệ thống)"
+            } else status
+        },
         textSizeSp = settings.textSizeSp,
         opacity = settings.overlayOpacity,
         showOriginal = settings.showOriginal,
