@@ -49,7 +49,8 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         val snapshot = CaptionSnapshotCandidateSelector.choose(
             sourceCandidates = sourceCandidates,
             eventTextCandidates = eventTextCandidates,
-            windowCandidates = windowCandidates
+            windowCandidates = windowCandidates,
+            previousSnapshot = lastSnapshot
         )
         if (snapshot.isBlank()) {
             if (lastSnapshot.isNotBlank()) {
