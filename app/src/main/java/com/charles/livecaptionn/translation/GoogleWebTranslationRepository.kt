@@ -67,7 +67,7 @@ class GoogleWebTranslationRepository : TranslationRepository {
             }
 
             try {
-                GoogleWebTranslationResponseParser.parse(raw).also { translated ->
+                GoogleWebTranslationResponseParser.parse(raw, targetCode).also { translated ->
                     if (translated.isBlank()) {
                         // Log only the top-level JSON shape, never response text.
                         val shape = raw.trimStart().firstOrNull() ?: ' '
