@@ -23,24 +23,34 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
             )
         ) return
 
-        val candidates = LinkedHashSet<String>()
-        event.text?.forEach { it?.toString()?.trim()?.takeIf(String::isNotEmpty)?.let(candidates::add) }
-        runCatching {
-            event.source?.let { collect(it, candidates, 0, intArrayOf(0)) }
+        // Prefer the node tied to this accessibility event. Window-wide scans can
+        // contain stale caption nodes; choosing the globally longest string may
+        // freeze the app on an older, longer snapshot.
+        val eventTextCandidates = LinkedHashSet<String>()
+        event.text?.forEach {
+            it?.toString()?.trim()?.takeIf(String::isNotEmpty)?.let(eventTextCandidates::add)
         }
+
+        val sourceCandidates = LinkedHashSet<String>()
+        runCatching {
+            event.source?.let { collect(it, sourceCandidates, 0, intArrayOf(0)) }
+        }
+
+        val windowCandidates = LinkedHashSet<String>()
         runCatching {
             windows.take(8).forEach { window ->
                 val root = window.root ?: return@forEach
                 if (isRelevant(root.packageName?.toString().orEmpty())) {
-                    collect(root, candidates, 0, intArrayOf(0))
+                    collect(root, windowCandidates, 0, intArrayOf(0))
                 }
             }
         }
 
-        val snapshot = candidates.asSequence()
-            .filter { it.length <= 20000 && containsJapanese(it) }
-            .maxByOrNull { it.length }
-            ?.trim().orEmpty()
+        val snapshot = CaptionSnapshotCandidateSelector.choose(
+            sourceCandidates = sourceCandidates,
+            eventTextCandidates = eventTextCandidates,
+            windowCandidates = windowCandidates
+        )
         if (snapshot.isBlank()) {
             if (lastSnapshot.isNotBlank()) {
                 lastSnapshot = ""
