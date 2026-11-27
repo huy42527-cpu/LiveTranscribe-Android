@@ -25,7 +25,9 @@ data class CaptionRuntimeState(
     val status: RecognitionStatus = RecognitionStatus.IDLE,
     val running: Boolean = false,
     val paused: Boolean = false,
-    val lastError: String? = null
+    val lastError: String? = null,
+    /** System Live Caption diagnostic; never treated as recognized speech. */
+    val liveCaptionStatus: String? = null
 )
 
 class CaptionRuntimeStore {
