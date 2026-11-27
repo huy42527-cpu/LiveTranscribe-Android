@@ -16,12 +16,22 @@ class GoogleWebTranslationResponseParserTest {
     }
 
     @Test
-    fun joinsMultipleTranslatedSegments() {
+    fun joinsMultipleTranslatedSegmentsWithWordSpaces() {
         val json = """[["Xin chào", "こんにちは"], ["bạn", "あなた"]]"""
 
         assertEquals(
-            "Xin chàobạn",
-            GoogleWebTranslationResponseParser.parse(json)
+            "Xin chào bạn",
+            GoogleWebTranslationResponseParser.parse(json, "vi")
+        )
+    }
+
+    @Test
+    fun joinsJapaneseSegmentsWithoutAddingSpaces() {
+        val json = """[["こんにちは"], ["世界"]]"""
+
+        assertEquals(
+            "こんにちは世界",
+            GoogleWebTranslationResponseParser.parse(json, "ja")
         )
     }
 
