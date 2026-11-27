@@ -613,7 +613,7 @@ class CaptionForegroundService : Service() {
         fontId = if (hasPro) settings.overlayFontId else OverlayFontCatalog.FREE_FONT_ID
     )
 
-    /** Close a visible partial line after 2s silence without stopping the streaming recognizer. */
+    /** Close a visible partial line at the engine's silence boundary without stopping STT. */
     private fun finalizeOpenTranscriptOnSilence() {
         var newlyClosed: CaptionRuntimeLine? = null
         app.container.runtimeStore.update { state ->
@@ -628,7 +628,7 @@ class CaptionForegroundService : Service() {
         }
         newlyClosed?.let { closedLine ->
             queueTranslation(closedLine.originalText, closedLine.id, closedLine.revision, isFinal = true)
-            Log.i("CaptionService", "transcriptLine closedBySilence id=" + closedLine.id + " pauseMs=2000")
+            Log.i("CaptionService", "transcriptLine closedBySilence id=" + closedLine.id + " boundaryMs=1000")
         }
     }
     private fun queueTranslation(
