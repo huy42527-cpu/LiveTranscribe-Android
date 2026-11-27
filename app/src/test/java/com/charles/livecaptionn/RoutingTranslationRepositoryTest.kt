@@ -68,21 +68,27 @@ class RoutingTranslationRepositoryTest {
     }
 
     @Test
-    fun translate_cachesBackend() = runTest {
+    fun translate_usesCurrentBackendAfterSettingsChange() = runTest {
         val mlKit = FakeTranslationRepository("mlkit")
         val libre = FakeTranslationRepository("libre")
         val google = FakeTranslationRepository("google")
+        val settings = FakeSettingsRepo(TranslationBackend.ML_KIT)
         val repo = RoutingTranslationRepository(
-            settingsRepository = FakeSettingsRepo(TranslationBackend.ML_KIT),
+            settingsRepository = settings,
             mlKit = mlKit,
             libre = libre,
             googleWeb = google
         )
-        repo.translate("a", "en", "vi", autoDetect = false)
-        repo.translate("b", "en", "vi", autoDetect = false)
-        repo.translate("c", "en", "vi", autoDetect = false)
-        assertEquals(3, mlKit.translateCount)
-        assertEquals(0, libre.translateCount)
+
+        assertEquals("mlkit", repo.translate("a", "en", "vi", autoDetect = false))
+        settings.backend = TranslationBackend.LIBRE_TRANSLATE
+        assertEquals("libre", repo.translate("b", "en", "vi", autoDetect = false))
+        settings.backend = TranslationBackend.GOOGLE_WEB
+        assertEquals("google", repo.translate("c", "en", "vi", autoDetect = false))
+
+        assertEquals(1, mlKit.translateCount)
+        assertEquals(1, libre.translateCount)
+        assertEquals(1, google.translateCount)
     }
 
     @Test
@@ -120,9 +126,20 @@ private class FakeTranslationRepository(private val result: String) : Translatio
     }
 }
 
-private class FakeSettingsRepo(private val backend: TranslationBackend) : SettingsRepository {
-    override val settingsFlow: StateFlow<CaptionSettings> =
-        MutableStateFlow(CaptionSettings(translationBackend = backend))
+private class FakeSettingsRepo(initialBackend: TranslationBackend) : SettingsRepository {
+    private val mutableSettings = MutableStateFlow(
+        CaptionSettings(translationBackend = initialBackend)
+    )
 
-    override suspend fun update(transform: (CaptionSettings) -> CaptionSettings) {}
+    override val settingsFlow: StateFlow<CaptionSettings> = mutableSettings
+
+    var backend: TranslationBackend
+        get() = mutableSettings.value.translationBackend
+        set(value) {
+            mutableSettings.value = mutableSettings.value.copy(translationBackend = value)
+        }
+
+    override suspend fun update(transform: (CaptionSettings) -> CaptionSettings) {
+        mutableSettings.value = transform(mutableSettings.value)
+    }
 }
