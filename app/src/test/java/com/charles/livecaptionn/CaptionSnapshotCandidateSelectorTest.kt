@@ -65,4 +65,28 @@ class CaptionSnapshotCandidateSelectorTest {
             )
         )
     }
+    @Test
+    fun exactNoJapaneseAudioStatusIsIgnored() {
+        assertEquals(
+            "",
+            CaptionSnapshotCandidateSelector.choose(
+                sourceCandidates = setOf("【日本語の音声が検出されませんでした】"),
+                eventTextCandidates = emptySet(),
+                windowCandidates = emptySet()
+            )
+        )
+    }
+
+    @Test
+    fun realJapaneseCaptionStillWinsAlongsideStatusMessage() {
+        assertEquals(
+            "今日は何をしますか",
+            CaptionSnapshotCandidateSelector.choose(
+                sourceCandidates = setOf("日本語の音声が検出されませんでした"),
+                eventTextCandidates = setOf("今日は何をしますか"),
+                windowCandidates = emptySet()
+            )
+        )
+    }
+
 }
