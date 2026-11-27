@@ -872,7 +872,7 @@ class CaptionForegroundService : Service() {
 /**
  * Receives Android Live Caption's accessibility text snapshots. The Android
  * recognizer remains system-owned and continuous; this engine only forwards
- * text and finalizes a visible line after 2s without a caption update.
+ * text and finalizes a visible line after 1s without a caption update.
  */
 private class LiveCaptionAccessibilityEngine(
     private val context: Context,
@@ -926,7 +926,7 @@ private class LiveCaptionAccessibilityEngine(
             statusMutable.value = RecognitionStatus.PROCESSING
             onResult(SpeechResult(text, isFinal = false))
             handler.removeCallbacks(finalizeLine)
-            handler.postDelayed(finalizeLine, 2_000L)
+            handler.postDelayed(finalizeLine, 1_000L)
         }
     }
 
@@ -972,7 +972,7 @@ private class LiveCaptionAccessibilityEngine(
         paused = false
         if (currentText.isNotBlank()) {
             onResult(SpeechResult(currentText, isFinal = false))
-            handler.postDelayed(finalizeLine, 2_000L)
+            handler.postDelayed(finalizeLine, 1_000L)
         }
         statusMutable.value = RecognitionStatus.LISTENING
     }
