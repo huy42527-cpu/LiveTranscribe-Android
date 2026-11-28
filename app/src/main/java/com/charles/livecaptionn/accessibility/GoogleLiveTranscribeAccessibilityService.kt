@@ -2,6 +2,8 @@ package com.charles.livecaptionn.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -14,6 +16,57 @@ import android.view.accessibility.AccessibilityNodeInfo
 class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
     private var lastSnapshot = ""
     private var lastSystemStatus = ""
+    private val pollHandler = Handler(Looper.getMainLooper())
+    @Volatile private var polling = false
+
+    /**
+     * Some Live Caption revisions update the system caption surface without
+     * delivering a useful accessibility event. A low-frequency fallback reads
+     * only relevant system windows and broadcasts only a changed snapshot.
+     */
+    private val snapshotPoll = object : Runnable {
+        override fun run() {
+            if (!polling) return
+            runCatching {
+                val candidates = LinkedHashSet<String>()
+                windows.take(8).forEach { window ->
+                    val root = window.root ?: return@forEach
+                    if (isRelevant(root.packageName?.toString().orEmpty())) {
+                        collect(root, candidates, 0, intArrayOf(0))
+                    }
+                }
+                val snapshot = CaptionSnapshotCandidateSelector.choose(
+                    sourceCandidates = emptySet(),
+                    eventTextCandidates = emptySet(),
+                    windowCandidates = candidates,
+                    previousSnapshot = lastSnapshot
+                )
+                if (snapshot.isNotBlank() && snapshot != lastSnapshot) {
+                    lastSnapshot = snapshot
+                    Log.d(TAG, "pollSnapshot changed=true chars=${snapshot.length} value=${snapshot.take(MAX_LOG_TEXT)}")
+                    sendBroadcast(
+                        Intent(ACTION_LIVE_CAPTION_TEXT)
+                            .setPackage(packageName)
+                            .putExtra(EXTRA_TEXT, snapshot)
+                    )
+                }
+            }.onFailure { Log.w(TAG, "Caption snapshot poll failed", it) }
+            if (polling) pollHandler.postDelayed(this, SNAPSHOT_POLL_INTERVAL_MS)
+        }
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        polling = true
+        pollHandler.removeCallbacks(snapshotPoll)
+        pollHandler.postDelayed(snapshotPoll, SNAPSHOT_POLL_INTERVAL_MS)
+    }
+
+    override fun onDestroy() {
+        polling = false
+        pollHandler.removeCallbacks(snapshotPoll)
+        super.onDestroy()
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || !isRelevant(event.packageName?.toString().orEmpty())) return
