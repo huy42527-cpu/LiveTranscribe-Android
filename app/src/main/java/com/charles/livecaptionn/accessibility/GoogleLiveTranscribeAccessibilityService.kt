@@ -189,6 +189,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "LiveCaptionAccessibility"
         private const val MAX_LOG_TEXT = 350
+        private const val SNAPSHOT_POLL_INTERVAL_MS = 1_200L
 
         const val ACTION_LIVE_CAPTION_TEXT =
             "com.charles.livecaptionn.action.LIVE_CAPTION_TEXT"
