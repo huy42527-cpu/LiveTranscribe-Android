@@ -60,6 +60,8 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ConcurrentLinkedQueue
 
+private const val MAX_PIPELINE_LOG_TEXT = 300
+
 @OptIn(FlowPreview::class)
 class CaptionForegroundService : Service() {
     private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -884,7 +886,6 @@ class CaptionForegroundService : Service() {
     }
 
     companion object {
-        private const val MAX_PIPELINE_LOG_TEXT = 300
         const val ACTION_START = "caption.action.START"
         const val ACTION_STOP = "caption.action.STOP"
         const val ACTION_PAUSE_RESUME = "caption.action.PAUSE_RESUME"
