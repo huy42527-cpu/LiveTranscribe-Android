@@ -2,6 +2,7 @@ package com.charles.livecaptionn.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
@@ -24,6 +25,9 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
             )
         ) return
 
+        val eventPackage = event.packageName?.toString().orEmpty()
+        Log.d(TAG, "event type=${AccessibilityEvent.eventTypeToString(event.eventType)} package=$eventPackage class=${event.className}")
+
         // Prefer the node tied to this accessibility event. Window-wide scans can
         // contain stale caption nodes; choosing the globally longest string may
         // freeze the app on an older, longer snapshot.
@@ -31,11 +35,13 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
         event.text?.forEach {
             it?.toString()?.trim()?.takeIf(String::isNotEmpty)?.let(eventTextCandidates::add)
         }
+        logCandidates("eventText", eventTextCandidates)
 
         val sourceCandidates = LinkedHashSet<String>()
         runCatching {
             event.source?.let { collect(it, sourceCandidates, 0, intArrayOf(0)) }
         }
+        logCandidates("eventSource", sourceCandidates)
 
         val windowCandidates = LinkedHashSet<String>()
         runCatching {
@@ -46,6 +52,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
                 }
             }
         }
+        logCandidates("windowScan", windowCandidates)
 
         // Keep exact system diagnostic messages on a separate channel. They are
         // useful for troubleshooting, but must never enter the transcript/translator.
@@ -68,6 +75,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
             windowCandidates = windowCandidates,
             previousSnapshot = lastSnapshot
         )
+        Log.d(TAG, "selectedSnapshot chars=${snapshot.length} changed=${snapshot != lastSnapshot} value=${snapshot.take(MAX_LOG_TEXT)}")
         if (snapshot.isBlank()) {
             // A status-only accessibility update is not a caption-clear event.
             if (systemStatus.isNotBlank()) return
@@ -89,6 +97,10 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
                 .setPackage(packageName)
                 .putExtra(EXTRA_TEXT, snapshot)
         )
+    }
+
+    private fun logCandidates(label: String, candidates: Collection<String>) {
+        Log.d(TAG, "$label count=${candidates.size}: ${candidates.joinToString(" || ") { it.take(MAX_LOG_TEXT) }}")
     }
 
     private fun collect(
@@ -122,6 +134,9 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     companion object {
+        private const val TAG = "LiveCaptionAccessibility"
+        private const val MAX_LOG_TEXT = 350
+
         const val ACTION_LIVE_CAPTION_TEXT =
             "com.charles.livecaptionn.action.LIVE_CAPTION_TEXT"
         const val EXTRA_TEXT = "live_caption_text"
