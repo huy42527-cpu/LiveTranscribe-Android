@@ -369,6 +369,7 @@ class CaptionForegroundService : Service() {
                     silenceFinalizedText = null
                 }
                 Log.d("CaptionService", "onSpeechResult final=${result.isFinal} chars=${transcript.length} embeddingPresent=${result.speakerEmbedding != null} embeddingSize=${result.speakerEmbedding?.size ?: 0} frames=${result.speakerFrames} singing=${result.isSinging} segmentId=${result.segmentId}")
+                Log.d("LiveCaptionPipeline", "TRANSCRIPT_ACCEPTED final=${result.isFinal} lineCandidate=${lineIdCounter.get() + 1} chars=${transcript.length} text=${transcript.take(MAX_PIPELINE_LOG_TEXT)}")
                 val candidateId = lineIdCounter.incrementAndGet()
 
                 val updatedRuntime = app.container.runtimeStore.update { runtime ->
@@ -663,11 +664,13 @@ class CaptionForegroundService : Service() {
                 historyOnNextTranslate = false
             }
         }
+        Log.d("LiveCaptionPipeline", "TRANSLATION_QUEUED final=$isFinal lineId=$lineId revision=$revision chars=${text.length} text=${text.take(MAX_PIPELINE_LOG_TEXT)}")
         if (isFinal) finalTranslateRequests.tryEmit(Unit)
         else translateRequests.tryEmit(Unit)
     }
 
     private suspend fun translateSnapshot(request: TranslationRequest) {
+        Log.d("LiveCaptionTranslation", "TRANSLATION_STARTED lineId=${request.lineId} revision=${request.revision} saveHistory=${request.saveHistory} chars=${request.text.length} text=${request.text.take(MAX_PIPELINE_LOG_TEXT)}")
         val captionSettings = app.container.settingsRepository.settingsFlow.first()
         val translated = app.container.translationRepository.translate(
             text = request.text,
@@ -675,6 +678,7 @@ class CaptionForegroundService : Service() {
             targetCode = captionSettings.targetLanguageCode,
             autoDetect = currentAudioSource == AudioSource.SYSTEM || captionSettings.autoDetectSource
         )
+        Log.d("LiveCaptionTranslation", "TRANSLATION_RESULT lineId=${request.lineId} revision=${request.revision} chars=${translated.length} text=${translated.take(MAX_PIPELINE_LOG_TEXT)}")
         if (translated.isBlank()) {
             Log.w("CaptionService", "Translation returned blank for lineId=${request.lineId}.")
             finishTranslationWithoutResult(request)
@@ -712,6 +716,7 @@ class CaptionForegroundService : Service() {
                 line.translatedText == translatedWithGlossary
         }
 
+        Log.d("LiveCaptionTranslation", "TRANSLATION_APPLIED lineId=${request.lineId} revision=${request.revision} accepted=$accepted translatedChars=${translatedWithGlossary.length}")
         if (accepted && request.saveHistory && captionSettings.saveHistory) {
             app.container.transcriptHistory.add(
                 TranscriptEntry(
@@ -879,6 +884,7 @@ class CaptionForegroundService : Service() {
     }
 
     companion object {
+        private const val MAX_PIPELINE_LOG_TEXT = 300
         const val ACTION_START = "caption.action.START"
         const val ACTION_STOP = "caption.action.STOP"
         const val ACTION_PAUSE_RESUME = "caption.action.PAUSE_RESUME"
@@ -937,6 +943,7 @@ private class LiveCaptionAccessibilityEngine(
             val snapshot = intent.getStringExtra(
                 accessibility.EXTRA_TEXT
             )?.trim().orEmpty()
+            Log.d("LiveCaptionPipeline", "CAPTION_BROADCAST chars=${snapshot.length} text=${snapshot.take(MAX_PIPELINE_LOG_TEXT)}")
             if (snapshot.isBlank()) {
                 // An empty accessibility snapshot is not a new caption revision.
                 // Keep the current line and its 1s inactivity timer; the timer
@@ -947,6 +954,7 @@ private class LiveCaptionAccessibilityEngine(
 
             val text = com.charles.livecaptionn.speech.LiveCaptionSnapshotText
                 .unfinalizedText(snapshot, finalizedBaseline)
+            Log.d("LiveCaptionPipeline", "CAPTION_TO_STT chars=${text.length} duplicate=${text == currentText} blank=${text.isBlank()} text=${text.take(MAX_PIPELINE_LOG_TEXT)}")
             if (text.isBlank() || text == currentText) return
             currentText = text
             statusMutable.value = RecognitionStatus.PROCESSING
