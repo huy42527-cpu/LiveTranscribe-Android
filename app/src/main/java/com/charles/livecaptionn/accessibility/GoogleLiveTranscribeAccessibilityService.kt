@@ -80,6 +80,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
 
         val eventPackage = event.packageName?.toString().orEmpty()
         Log.d(TAG, "event type=${AccessibilityEvent.eventTypeToString(event.eventType)} package=$eventPackage class=${event.className}")
+        Log.i(PROBE_TAG, "CAPTION_PROBE package=$eventPackage event=${event.eventType} class=${event.className} text=${event.text?.joinToString(" ")?.take(MAX_LOG_TEXT).orEmpty()}")
 
         // Prefer the node tied to this accessibility event. Window-wide scans can
         // contain stale caption nodes; choosing the globally longest string may
@@ -154,6 +155,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
 
     private fun logCandidates(label: String, candidates: Collection<String>) {
         Log.d(TAG, "$label count=${candidates.size}: ${candidates.joinToString(" || ") { it.take(MAX_LOG_TEXT) }}")
+        if (candidates.isNotEmpty()) Log.i(PROBE_TAG, "CAPTION_PROBE $label count=${candidates.size} text=${candidates.joinToString(" | ") { it.take(MAX_LOG_TEXT) }.take(MAX_LOG_TEXT)}")
     }
 
     private fun collect(
@@ -188,6 +190,7 @@ class GoogleLiveTranscribeAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "LiveCaptionAccessibility"
+        private const val PROBE_TAG = "LiveCaptionA11yProbe"
         private const val MAX_LOG_TEXT = 350
         // Keep the fallback slower than event-driven reads to limit A05s overhead.
         private const val SNAPSHOT_POLL_INTERVAL_MS = 1_200L
